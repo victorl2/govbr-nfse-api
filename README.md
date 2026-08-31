@@ -10,17 +10,18 @@ DANFSe localmente. Quem chama a API descreve a venda em JSON, nunca lida com XML
 Carga do certificado, mTLS, assinatura XMLDSig, validação XSD + lint de regras de
 negócio, emissão síncrona, eventos de cancelamento e substituição, DANFSe e
 numeração durável estão implementados e exercitados ao vivo. Para o go-live falta
-credenciamento, o mapeamento real do catálogo de serviços e a virada de profile ,
+credenciamento, o mapeamento real do catálogo de serviços e a virada de profile,
 veja [docs/07](docs/07-sandbox-to-go-live.md).
 
 ## Documentação
-→ **[docs/README.md](docs/README.md)** , documentação completa de integração
+→ **[docs/README.md](docs/README.md)**, documentação completa de integração
 (arquitetura, pré-requisitos, referência da API, layout DPS/NFS-e, eventos,
 assinatura, sandbox até go-live e o desenho em Java).
 
 ## CLI
 
-Há uma CLI em Rust — binário único, sem runtime — que fala com o serviço:
+Há uma CLI em Rust, distribuída como binário único e sem runtime, que fala com
+o serviço:
 
 ```bash
 nfse saude
@@ -45,7 +46,7 @@ mvn package          # -> target/nfse.jar + target/lib/
 # 3a. Execução local (cert dummy, sem rede gov.br)
 NFSE_PROFILE=local NFSE_CERT_PATH=certs/dummy.p12 java -jar target/nfse.jar
 
-# 3b. Execução contra produção restrita (e-CNPJ A1 REAL , comprova o mTLS)
+# 3b. Execução contra produção restrita (e-CNPJ A1 REAL, comprova o mTLS)
 NFSE_PROFILE=restrita NFSE_CERT_PATH=/secure/ecnpj.p12 NFSE_CERT_PASSWORD=*** \
   java -jar target/nfse.jar
 # depois: curl localhost:8080/internal/certificate  e  /internal/connectivity
@@ -65,7 +66,7 @@ curl -s -X POST localhost:8080/nfse/send -H 'Content-Type: application/json' -d 
 
 O formato da requisição está em `EmitNfseRequest`: `emitter`, `dps`, `service`,
 `values` e, opcionalmente, `ibsCbs`, `tomador`, `intermediario`,
-`comercioExterior` e `substituicao` , exportação de serviço é um fluxo de primeira
+`comercioExterior` e `substituicao`, exportação de serviço é um fluxo de primeira
 classe. `values` também aceita `descontos` (incondicionado/condicionado),
 `deducaoReducao` e `tributacaoFederal` (PIS/COFINS mais as retenções de
 IRRF/CSLL/CP); `service.infoCompl` carrega `xInfComp`, `docRef` e `xPed`.
@@ -87,14 +88,14 @@ gera o mesmo id de DPS, reservado antes de qualquer envio, então uma repetiçã
 devolve o resultado armazenado em vez de emitir duas vezes.
 
 Toda transmissão é registrada antes de sair, e a nota autorizada e sua DPS
-assinada são guardadas , a legislação exige cinco anos de armazenamento, e sem cópia local
+assinada são guardadas, a legislação exige cinco anos de armazenamento, e sem cópia local
 uma resposta perdida obriga a varrer o ADN atrás da própria nota.
 
 ```bash
 curl -s localhost:8080/internal/numbering                      # → {"1": 18}
 curl -s -X PUT localhost:8080/internal/numbering/1 \
      -H 'Content-Type: application/json' -d '{"lastConsumed":18}'
-# reduzir um contador é recusado com 400 , reemitiria um número já usado
+# reduzir um contador é recusado com 400, reemitiria um número já usado
 
 curl -s localhost:8080/nfse/{chaveAcesso}              # o registro armazenado
 curl -s localhost:8080/nfse/{chaveAcesso}/xml          # a NFS-e autorizada
@@ -122,10 +123,10 @@ curl -s        localhost:8080/nfse/{chaveAcesso}/eventos/101101/1      # lê um 
 
 O mesmo caminho aceita **POST**: o cancelamento exige corpo na requisição, e
 corpos em DELETE, embora legais, são frequentemente removidos por proxies.
-Cancelar não apaga nada , a nota continua recuperável, com o evento anexado.
+Cancelar não apaga nada, a nota continua recuperável, com o evento anexado.
 
 `cMotivo`: 1 = Erro na Emissão, 2 = Serviço não Prestado, 9 = Outros. `xMotivo`
-exige no mínimo 15 caracteres , o XSD oficial determina isso, e o serviço detecta
+exige no mínimo 15 caracteres, o XSD oficial determina isso, e o serviço detecta
 offline.
 
 Todo carimbo de tempo fiscal (`dhEmi`, `dCompet`, `dhEvento`) usa o **horário de
@@ -136,7 +137,7 @@ uma nota na competência errada.
 
 Gerada localmente conforme a NT-008 (a API oficial de geração foi desativada em
 2026-08-03; o software emissor deve produzir a sua). O layout replica fielmente o
-template DANFSe v2.0 do portal , mesma geometria, fontes embutidas e QR Code.
+template DANFSe v2.0 do portal, mesma geometria, fontes embutidas e QR Code.
 
 ```bash
 curl -s localhost:8080/nfse/{chaveAcesso}/danfse -o danfse.pdf   # busca a nota na SEFIN
@@ -152,7 +153,7 @@ curl -s -X POST 'localhost:8080/internal/dry-run?expectedMunicipality=3304557&ex
 ```
 
 Os parâmetros de consulta são as expectativas de quem chama (código IBGE do
-município; `opSimpNac` 1=Não Optante, 2=MEI, 3=ME/EPP) , omita qualquer um para
+município; `opSimpNac` 1=Não Optante, 2=MEI, 3=ME/EPP), omita qualquer um para
 pular aquela verificação. O serviço em si é neutro quanto à empresa.
 
 ## Docker
@@ -177,7 +178,7 @@ docker run -m 192m -p 8080:8080 \
   nfse
 ```
 
-A imagem é autocontida , schemas, truststore, fontes da DANFSe e tabela do IBGE
+A imagem é autocontida, schemas, truststore, fontes da DANFSe e tabela do IBGE
 viajam dentro do jar. Só o certificado é montado em tempo de execução, e **pode
 continuar pertencendo ao root com `chmod 600`**: o entrypoint sobe como root
 apenas o suficiente para copiá-lo para um caminho privado do contêiner (modo 400)
@@ -188,7 +189,7 @@ ler o certificado sozinho.
 > **Use `-m 192m`.** É o menor limite que nunca pressiona o coletor, de 1 a 16
 > renderizações simultâneas. Memória aqui compra vazão, não latência: com 8
 > renderizações simultâneas, 192m sustenta **35 req/s** contra 8,5 em 128m. Acima
-> disso o ganho é marginal , use 256m só se mais de 8 renderizações forem ficar em
+> disso o ganho é marginal, use 256m só se mais de 8 renderizações forem ficar em
 > voo ao mesmo tempo, e não desça abaixo de 128m.
 
 ## Operação
@@ -197,7 +198,7 @@ ler o certificado sozinho.
 o certificado. Responde **503 `DOWN`** quando o e-CNPJ não carrega ou está
 vencido, e **200 `UP`** caso contrário, com `daysToExpiry` e um aviso abaixo de 30
 dias. Permanece UP enquanto o certificado está apenas se aproximando do
-vencimento , derrubar um serviço saudável um mês antes não ajuda ninguém; alerte
+vencimento, derrubar um serviço saudável um mês antes não ajuda ninguém; alerte
 pelo aviso.
 
 ```json
@@ -207,14 +208,14 @@ pelo aviso.
 A geração da DANFSe é limitada: é intensiva em CPU e alocação, então concorrência
 ilimitada transforma um pico de carga em pressão de memória. Renderizações além de
 `NFSE_MAX_CONCURRENT_RENDERS` aguardam na fila por
-`NFSE_RENDER_QUEUE_TIMEOUT_SECONDS` e então recebem **529 Service Overloaded** ,
+`NFSE_RENDER_QUEUE_TIMEOUT_SECONDS` e então recebem **529 Service Overloaded**,
 uma condição retentável, deliberadamente distinta do 503 que significa que o
 serviço não consegue emitir nota alguma.
 
 | Variável | Padrão | Função |
 |---|---|---|
-| `NFSE_PROFILE` | `local` | `local` / `restrita` / `producao` , define host **e** `tpAmb` juntos. |
-| `NFSE_CERT_PATH` / `NFSE_CERT_PASSWORD` | , | O e-CNPJ A1. Nunca embutido na imagem. |
+| `NFSE_PROFILE` | `local` | `local` / `restrita` / `producao`, define host **e** `tpAmb` juntos. |
+| `NFSE_CERT_PATH` / `NFSE_CERT_PASSWORD` |, | O e-CNPJ A1. Nunca embutido na imagem. |
 | `NFSE_DATA_DIR` | `/var/lib/nfse` | Contadores e registros de emissão. **Monte.** |
 | `NFSE_MAX_CONCURRENT_RENDERS` | um por núcleo | Limite de DANFSe simultâneas. |
 | `NFSE_CONNECTIVITY_CHECK` | ligado fora de `local` | Sonda mTLS na inicialização. |
@@ -242,13 +243,13 @@ O treinamento (estágio 2c do Dockerfile) sobe o serviço real, executa 60
 renderizações de DANFSe e 15 ciclos de validate + send + cancel, e o encerra com
 SIGTERM para que a JVM escreva o cache. **Nada real é tocado: o certificado é um
 par de chaves descartável gerado no build e a SEFIN é um stub WireMock
-(`training/`) , o build não precisa de e-CNPJ e nunca chama o gov.br.** O
+(`training/`), o build não precisa de e-CNPJ e nunca chama o gov.br.** O
 treinamento exige que sua própria primeira emissão volte `AUTHORIZED`, porque um
 stub que falhe em silêncio ainda produziria um cache plausível e vazio dos
 caminhos de emissão.
 
 `AOTMode=auto` é deliberado: um cache que não corresponda ao runtime é ignorado
-com registro em log, em vez de fatal. Outras opções foram medidas e descartadas ,
+com registro em log, em vez de fatal. Outras opções foram medidas e descartadas,
 CDS puro, `-XX:TieredStopAtLevel=1`, pré-aquecimento em segundo plano, outros
 fornecedores de JDK (Corretto e Zulu: idênticos dentro do ruído) e o CRaC, o mais
 rápido de todos, recusado porque um checkpoint é um despejo de memória sem
@@ -257,7 +258,7 @@ criptografia e exige contêiner privilegiado.
 <sub>Máquina de referência: MacBook Pro (M1 Pro, 10 núcleos, 32 GB, macOS 26.4)
 com Docker Desktop 24.0.7, 10 CPUs e 7,7 GiB para a VM Linux; JVM Temurin 25.0.4
 em aarch64/musl. A DANFSe é limitada por CPU, então a vazão acompanha o número de
-núcleos , espere números menores em uma instância de 2 vCPUs. Os limites de
+núcleos, espere números menores em uma instância de 2 vCPUs. Os limites de
 memória não dependem de CPU.</sub>
 
 ## Estrutura do repositório
@@ -265,7 +266,7 @@ memória não dependem de CPU.</sub>
 | Caminho | Conteúdo |
 |------|----------|
 | [`docs/`](docs) | Documentação de integração (comece por aqui). |
-| [`src/`](src) | O serviço. Sem framework , veja `NfseApplication.main`. |
+| [`src/`](src) | O serviço. Sem framework, veja `NfseApplication.main`. |
 | [`schemas/`](schemas) | XSDs oficiais da NFS-e. **v1.01 = 2026-02-09.** |
 | [`cli/`](cli) | CLI em Rust, distribuída como binário único. |
 | [`training/`](training) | Stub WireMock e carga usados no treino do cache AOT. |
