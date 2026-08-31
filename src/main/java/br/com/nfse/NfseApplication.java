@@ -59,8 +59,8 @@ public final class NfseApplication {
         HttpApi api = assembly.api();
         int port = api.start(Settings.port());
         Runtime.getRuntime().addShutdownHook(new Thread(api::stop));
-        log.info("NFS-e API listening on port {} (max {} concurrent DANFSe renders)",
-                port, assembly.renderCapacity());
+        log.info("NFS-e API listening on port {} (max {} concurrent DANFSe renders); state in {}",
+                port, assembly.renderCapacity(), assembly.stateDir());
 
     }
 
@@ -70,7 +70,7 @@ public final class NfseApplication {
 
     /** Everything the service is made of, so callers can reach the few parts they need. */
     record Assembly(HttpApi api, CertificateLoader certificateLoader, SefinClient sefinClient,
-                    int renderCapacity) {
+                    int renderCapacity, java.nio.file.Path stateDir) {
     }
 
     /**
@@ -127,8 +127,18 @@ public final class NfseApplication {
         DpsDryRunService dryRunService = new DpsDryRunService(
                 dpsSchema, new DpsLinter(props), signer, verifier);
 
-        NumberingStore numbering = new NumberingStore(dataDir);
-        EmissionStore emissions = new EmissionStore(dataDir, json);
+        // O estado fica separado POR AMBIENTE, e isso não é organização: o
+        // infDPS@Id não carrega tpAmb (o layout não prevê), então restrita e
+        // produção produzem o MESMO dpsId para a mesma (série, número). Num
+        // diretório único, uma emissão em produção esbarraria no registro de
+        // restrita, o guarda de idempotência devolveria o resultado guardado e a
+        // resposta viria AUTHORIZED com a chave de restrita — sucesso falso,
+        // exibindo como nota real uma chave sem valor legal nenhum.
+        java.nio.file.Path envDir = dataDir.resolve(
+                props.environment().name().toLowerCase(java.util.Locale.ROOT));
+        avisarSobreLayoutAntigo(dataDir, envDir);
+        NumberingStore numbering = new NumberingStore(envDir);
+        EmissionStore emissions = new EmissionStore(envDir, json);
         NfseEmissionService emissionService = new NfseEmissionService(
                 new DpsBuilder(props, clock), dryRunService, sefinClient, numbering, emissions);
         NfseEventService eventService = new NfseEventService(
@@ -147,7 +157,24 @@ public final class NfseApplication {
                 dryRunService, certificateLoader, healthCheck, renderGate,
                 numbering, emissions, props, json).register(api);
 
-        return new Assembly(api, certificateLoader, sefinClient, renderGate.capacity());
+        return new Assembly(api, certificateLoader, sefinClient, renderGate.capacity(), envDir);
+    }
+
+    /**
+     * O layout antigo guardava tudo na raiz do dataDir, sem separar ambiente.
+     * Esses registros são documentos fiscais: mover sozinho seria pior do que
+     * avisar, porque só quem operou sabe de qual ambiente eles vieram.
+     */
+    private static void avisarSobreLayoutAntigo(java.nio.file.Path dataDir, java.nio.file.Path envDir) {
+        for (String legado : new String[] {"emissions", "numbering"}) {
+            java.nio.file.Path antigo = dataDir.resolve(legado);
+            if (java.nio.file.Files.isDirectory(antigo) && !antigo.startsWith(envDir)) {
+                log.warn("Há registros no layout antigo em {} — eles NÃO serão lidos."
+                                + " O estado agora fica separado por ambiente, em {}."
+                                + " Mova o que for do ambiente certo: mv {}/* {}/",
+                        antigo, envDir, antigo, envDir.resolve(legado));
+            }
+        }
     }
 
     /** Proves, before any note is issued, that the certificate loads and mTLS works. */

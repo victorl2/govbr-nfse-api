@@ -124,6 +124,15 @@ com o código E2220**, e não como uma lista vazia.
 > nenhum dos dois é reconstituível. Uma nota rejeitada localmente devolve seu
 > número; uma rejeitada **pela SEFIN** o mantém, porque aquele número foi gasto.
 
+O estado fica em um subdiretório **por ambiente** (`restrita/`, `producao/`,
+`local/`), e isso não é arrumação. O `infDPS@Id` não carrega `tpAmb`, então
+restrita e produção produzem o **mesmo** id para a mesma (série, número). Como o
+registro local é o guarda de idempotência, um diretório único faria uma emissão
+em produção esbarrar no registro de restrita e voltar `AUTHORIZED` com a chave de
+restrita, **sem emitir nada**: um sucesso falso, exibindo como nota real uma
+chave sem valor legal. Isso também mantém a numeração de produção começando
+limpa, como a legislação espera.
+
 ## Cancelamento e eventos
 Uma nota emitida é anulada por um *Pedido de Registro de Evento* assinado
 ([docs/05](docs/05-events.md)). O cancelamento tem prazo municipal; vencido, a
