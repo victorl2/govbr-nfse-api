@@ -44,7 +44,7 @@ struct Cli {
     #[arg(long, global = true)]
     env: Option<String>,
 
-    /// Caminho do config (padrão: ./.nfse-cli/config.json ou ~/.nfse-cli/config.json)
+    /// Caminho do config (padrão: ./.nfse/config.json ou ~/.nfse/config.json)
     #[arg(long, global = true, env = "NFSE_CLI_CONFIG")]
     config: Option<PathBuf>,
 

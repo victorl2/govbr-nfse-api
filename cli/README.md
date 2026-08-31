@@ -19,13 +19,25 @@ cargo build --release      # -> target/release/nfse
 
 ## Configuração
 
-Na primeira execução a CLI cria `.nfse-cli/config.json` e avisa onde. O arquivo
+Na primeira execução a CLI cria `.nfse/config.json` e avisa onde. O arquivo
 guarda o **ambiente ativo** (com qual serviço falar) e os **modelos** de venda.
 
-Procura nesta ordem: `--config`, `$NFSE_CLI_CONFIG`, `./.nfse-cli/config.json`
-(configuração do projeto) e `~/.nfse-cli/config.json` (a do usuário). Uma pasta
-`.nfse-cli` no diretório do projeto vence a do usuário, o que permite manter uma
+Procura nesta ordem: `--config`, `$NFSE_CLI_CONFIG`, `./.nfse/config.json`
+(configuração do projeto) e `~/.nfse/config.json` (a do usuário). Uma pasta
+`.nfse` no diretório do projeto vence a do usuário, o que permite manter uma
 configuração por cliente ou por empresa.
+
+`.nfse` é uma pasta só para tudo do emissor, geralmente assim:
+
+```
+~/.nfse/
+  ecnpj.p12       o certificado e-CNPJ
+  config.json     ambientes e modelos da CLI
+  data/           os registros de emissão do serviço (NFSE_DATA_DIR)
+```
+
+A CLI cria a pasta com permissão **0700**, porque ela divide espaço com a chave
+privada.
 
 ```bash
 nfse config                                     # onde está e o que tem dentro

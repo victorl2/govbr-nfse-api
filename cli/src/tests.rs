@@ -252,7 +252,7 @@ fn caminho_temporario() -> std::path::PathBuf {
     let n = N.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir()
         .join(format!("nfse-cli-teste-{}-{n}", std::process::id()))
-        .join(".nfse-cli")
+        .join(".nfse")
         .join("config.json")
 }
 
@@ -400,4 +400,28 @@ fn so_um_sim_explicito_emite() {
     for nao in ["", "\n", "n", "não", "nao", "no", "talvez", "x"] {
         assert!(!resposta_positiva(nao), "não deveria aceitar {nao:?}");
     }
+}
+
+#[test]
+#[cfg(unix)]
+fn o_config_nasce_fechado() {
+    use std::os::unix::fs::PermissionsExt;
+    // O config guarda os modelos, e um modelo é a venda inteira: CNPJ, contato
+    // e dados do tomador. Não pode nascer legível por todo mundo.
+    let caminho = caminho_temporario();
+    let config = Config::carregar(Some(&caminho)).expect("criar");
+    let arquivo = std::fs::metadata(&caminho)
+        .expect("stat")
+        .permissions()
+        .mode()
+        & 0o777;
+    let pasta = std::fs::metadata(caminho.parent().unwrap())
+        .expect("stat")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(arquivo, 0o600, "config deveria ser 0600, é {arquivo:o}");
+    assert_eq!(pasta, 0o700, "pasta deveria ser 0700, é {pasta:o}");
+    drop(config);
+    let _ = std::fs::remove_dir_all(caminho.parent().unwrap().parent().unwrap());
 }

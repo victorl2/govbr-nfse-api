@@ -7,6 +7,10 @@
 //!
 //! Nada de segredo entra neste arquivo. O certificado e-CNPJ e sua senha vivem
 //! no serviço, nunca na máquina de quem chama a CLI.
+//!
+//! A pasta é `.nfse`, a mesma onde costuma ficar o certificado. Uma pasta só
+//! para tudo do emissor, e por isso ela é criada com permissão 0700: se um dia
+//! o e-CNPJ estiver ao lado, o diretório já nasce fechado.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -16,7 +20,7 @@ use serde_json::Value;
 
 use crate::client::Error;
 
-pub const NOME_PASTA: &str = ".nfse-cli";
+pub const NOME_PASTA: &str = ".nfse";
 pub const NOME_ARQUIVO: &str = "config.json";
 pub const URL_PADRAO: &str = "http://localhost:8080";
 
@@ -71,8 +75,8 @@ pub struct Config {
 
 impl Config {
     /// Procura, nesta ordem: o caminho explícito, `$NFSE_CLI_CONFIG`, uma pasta
-    /// `.nfse-cli` no diretório atual (configuração do projeto) e, por fim,
-    /// `~/.nfse-cli` (a do usuário). Se nada existir, cria a do usuário.
+    /// `.nfse` no diretório atual (configuração do projeto) e, por fim,
+    /// `~/.nfse` (a do usuário). Se nada existir, cria a do usuário.
     pub fn carregar(explicito: Option<&Path>) -> Result<Config, Error> {
         let caminho = Self::resolver_caminho(explicito);
 
@@ -132,6 +136,7 @@ impl Config {
                 std::fs::create_dir_all(pasta).map_err(|e| {
                     Error::Local(format!("não foi possível criar {}: {e}", pasta.display()))
                 })?;
+                fechar_permissoes(pasta);
             }
         }
         let texto = serde_json::to_string_pretty(dados)
@@ -141,7 +146,11 @@ impl Config {
                 "não foi possível gravar {}: {e}",
                 caminho.display()
             ))
-        })
+        })?;
+        // 0600: os modelos guardam a venda inteira, com CNPJ, contato e dados do
+        // tomador. É dado de cliente, não configuração pública.
+        fechar_arquivo(caminho);
+        Ok(())
     }
 
     /// O endereço do ambiente ativo, ou o padrão quando o ambiente ativo não
@@ -167,6 +176,27 @@ impl Config {
         })
     }
 }
+
+/// 0700 na pasta: ela divide espaço com o e-CNPJ, e um diretório legível por
+/// todos ao lado de uma chave privada é um convite. Silencioso de propósito —
+/// não conseguir endurecer a permissão não é motivo para a CLI parar.
+#[cfg(unix)]
+fn fechar_permissoes(pasta: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(pasta, std::fs::Permissions::from_mode(0o700));
+}
+
+#[cfg(not(unix))]
+fn fechar_permissoes(_pasta: &Path) {}
+
+#[cfg(unix)]
+fn fechar_arquivo(arquivo: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(arquivo, std::fs::Permissions::from_mode(0o600));
+}
+
+#[cfg(not(unix))]
+fn fechar_arquivo(_arquivo: &Path) {}
 
 fn diretorio_do_usuario() -> Option<PathBuf> {
     for chave in ["HOME", "USERPROFILE"] {

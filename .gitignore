@@ -54,4 +54,4 @@ data/
 
 # Configuração local da CLI. Os modelos de venda guardam CNPJ, tomador e valores
 # reais, então este arquivo é dado de cliente, não configuração de projeto.
-.nfse-cli/
+.nfse/
