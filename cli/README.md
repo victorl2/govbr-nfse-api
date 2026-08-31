@@ -72,13 +72,29 @@ nfse cancelar  CHAVE -m 1 -j "Erro na emissao do documento" --simular
 nfse cancelar  CHAVE -m 1 -j "Erro na emissao do documento"
 nfse evento    CHAVE -t 101101 -s 1
 
-nfse emissoes  --limite 20                   # tentativas recentes
+nfse emissoes  --limite 20                   # o que este serviço emitiu
+nfse distribuicao                            # o que existe no registro nacional
+nfse distribuicao --salvar-em ./notas        # e grava o XML de cada documento
 nfse numeracao                               # contadores atuais
 nfse numeracao --serie 1 --ultimo-consumido 18
 nfse validar-dps -a minha-dps.xml --municipio 3304557 --opsimpnac 3
 ```
 
 `--json` em qualquer comando imprime a resposta crua do serviço, boa para `jq`.
+
+### `emissoes` e `distribuicao` respondem perguntas diferentes
+
+`emissoes` lê o registro local: o que **este serviço** emitiu. `distribuicao` lê
+o ADN: o que **existe nacionalmente** para o CNPJ, inclusive notas emitidas pelo
+portal ou por outro sistema, e notas em que outra pessoa indicou você. Também
+traz os eventos (cancelamentos) vinculados.
+
+```bash
+nfse distribuicao                       # caminha do NSU 0 até o fim
+nfse distribuicao --nsu 12              # só o que veio depois do NSU 12
+nfse distribuicao --uma-pagina          # um lote só
+nfse distribuicao --salvar-em ./notas   # grava cada XML em arquivo
+```
 
 ## Códigos de saída
 

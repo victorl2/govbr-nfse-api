@@ -1,5 +1,6 @@
 package br.com.nfse;
 
+import br.com.nfse.adn.AdnClient;
 import br.com.nfse.api.ApiRoutes;
 import br.com.nfse.certificate.CertificateInfo;
 import br.com.nfse.certificate.CertificateLoader;
@@ -63,6 +64,10 @@ public final class NfseApplication {
 
     }
 
+    /** The two mTLS endpoints, built together because they share one SSLContext. */
+    private record HttpClientPair(RestClient sefin, RestClient adn) {
+    }
+
     /** Everything the service is made of, so callers can reach the few parts they need. */
     record Assembly(HttpApi api, CertificateLoader certificateLoader, SefinClient sefinClient,
                     int renderCapacity) {
@@ -90,24 +95,31 @@ public final class NfseApplication {
         CertificateLoader certificateLoader = new CertificateLoader(props);
         DpsSchemaValidator dpsSchema;
         PedRegEventoSchemaValidator eventSchema;
-        RestClient sefinRestClient;
+        HttpClientPair clients;
         try (ExecutorService startup = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<DpsSchemaValidator> dpsSchemaTask = startup.submit(DpsSchemaValidator::new);
             Future<PedRegEventoSchemaValidator> eventSchemaTask =
                     startup.submit(PedRegEventoSchemaValidator::new);
-            Future<RestClient> tlsTask = startup.submit(() -> HttpClients.restClient(props,
-                    HttpClients.httpClient(props, HttpClients.sslContext(certificateLoader)),
-                    props.sefinBaseUrl()));
+            // Um único SSLContext serve os dois destinos: a SEFIN (emissão) e o
+            // ADN (registro nacional). Construí-lo duas vezes pagaria o custo
+            // mais caro da inicialização de novo, por nada.
+            Future<HttpClientPair> tlsTask = startup.submit(() -> {
+                var http = HttpClients.httpClient(props, HttpClients.sslContext(certificateLoader));
+                return new HttpClientPair(
+                        HttpClients.restClient(props, http, props.sefinBaseUrl()),
+                        HttpClients.restClient(props, http, props.adnBaseUrl()));
+            });
 
             dpsSchema = dpsSchemaTask.get();
             eventSchema = eventSchemaTask.get();
-            sefinRestClient = tlsTask.get();
+            clients = tlsTask.get();
         } catch (ExecutionException e) {
             // Unwrap: a bad certificate must still report itself, not appear as a
             // concurrency failure.
             throw e.getCause() instanceof Exception cause ? cause : e;
         }
-        SefinClient sefinClient = new SefinClient(sefinRestClient);
+        SefinClient sefinClient = new SefinClient(clients.sefin());
+        AdnClient adnClient = new AdnClient(clients.adn());
         long tReady = System.nanoTime();
 
         EnvelopedXmlSigner signer = new EnvelopedXmlSigner(props, certificateLoader);
@@ -131,7 +143,7 @@ public final class NfseApplication {
                 new ConcurrencyGate(Settings.maxConcurrentRenders(), Settings.renderQueueTimeout());
 
         HttpApi api = new HttpApi(json);
-        new ApiRoutes(emissionService, eventService, sefinClient, new DanfseGenerator(),
+        new ApiRoutes(emissionService, eventService, sefinClient, adnClient, new DanfseGenerator(),
                 dryRunService, certificateLoader, healthCheck, renderGate,
                 numbering, emissions, props, json).register(api);
 

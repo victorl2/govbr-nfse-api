@@ -135,6 +135,18 @@ enum Comando {
         saida: Option<PathBuf>,
     },
 
+    /// Notas no registro nacional (ADN), inclusive as emitidas fora daqui
+    Distribuicao {
+        /// Começa depois deste NSU (cursor exclusivo)
+        #[arg(long, default_value_t = 0)]
+        nsu: u64,
+        /// Traz só um lote em vez de caminhar até o fim
+        #[arg(long)]
+        uma_pagina: bool,
+        /// Grava o XML de cada documento nesta pasta
+        #[arg(long)]
+        salvar_em: Option<PathBuf>,
+    },
     /// Tentativas de emissão recentes, da mais nova para a mais antiga
     Emissoes {
         #[arg(short, long, default_value_t = 20)]
@@ -448,6 +460,12 @@ fn executar(cli: &Cli, client: &Client, config: &mut Config) -> client::Result<u
             Ok(EXIT_OK)
         }
 
+        Comando::Distribuicao {
+            nsu,
+            uma_pagina,
+            salvar_em,
+        } => distribuicao(client, *nsu, *uma_pagina, salvar_em.as_ref(), cli.json),
+
         Comando::Emissoes { limite } => {
             let resposta = client.emissions(*limite)?;
             if cli.json {
@@ -490,6 +508,122 @@ fn executar(cli: &Cli, client: &Client, config: &mut Config) -> client::Result<u
             Ok(EXIT_OK)
         }
     }
+}
+
+// ------------------------------------------------------- distribuição (ADN)
+
+/// Caminha a distribuição do ADN. O cursor é exclusivo e o fim vem como um lote
+/// vazio, então basta repetir com o último NSU recebido até esvaziar.
+fn distribuicao(
+    client: &Client,
+    nsu_inicial: u64,
+    uma_pagina: bool,
+    salvar_em: Option<&PathBuf>,
+    json: bool,
+) -> client::Result<u8> {
+    let com_xml = salvar_em.is_some();
+    if let Some(pasta) = salvar_em {
+        std::fs::create_dir_all(pasta).map_err(|e| {
+            Error::Local(format!("não foi possível criar {}: {e}", pasta.display()))
+        })?;
+    }
+
+    let mut nsu = nsu_inicial;
+    let mut total = 0usize;
+    let mut ambiente = String::new();
+    let mut lotes: Vec<Value> = Vec::new();
+
+    loop {
+        let lote = client.distribuicao(nsu, com_xml)?;
+        let documentos = lote
+            .get("documentos")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if let Some(a) = lote.get("ambiente").and_then(Value::as_str) {
+            ambiente = a.to_string();
+        }
+        if documentos.is_empty() {
+            if total == 0 {
+                if json {
+                    imprimir_json(&lote);
+                } else {
+                    println!("nenhum documento a partir do NSU {nsu_inicial}");
+                }
+                return Ok(EXIT_OK);
+            }
+            break;
+        }
+
+        if json {
+            lotes.push(lote.clone());
+        } else {
+            if total == 0 {
+                println!(
+                    "{:<6} {:<7} {:<52} {}",
+                    "NSU", "TIPO", "CHAVE DE ACESSO", "GERADO EM"
+                );
+            }
+            for doc in &documentos {
+                println!(
+                    "{:<6} {:<7} {:<52} {}",
+                    doc.get("nsu").and_then(Value::as_u64).unwrap_or(0),
+                    doc.get("tipoDocumento")
+                        .and_then(Value::as_str)
+                        .unwrap_or("-"),
+                    doc.get("chaveAcesso")
+                        .and_then(Value::as_str)
+                        .unwrap_or("-"),
+                    doc.get("dataHoraGeracao")
+                        .and_then(Value::as_str)
+                        .unwrap_or("-")
+                );
+            }
+        }
+
+        if let Some(pasta) = salvar_em {
+            for doc in &documentos {
+                let (Some(xml), Some(chave)) = (
+                    doc.get("xml").and_then(Value::as_str),
+                    doc.get("chaveAcesso").and_then(Value::as_str),
+                ) else {
+                    continue;
+                };
+                let tipo = doc
+                    .get("tipoDocumento")
+                    .and_then(Value::as_str)
+                    .unwrap_or("DOC")
+                    .to_lowercase();
+                let n = doc.get("nsu").and_then(Value::as_u64).unwrap_or(0);
+                escrever(
+                    &pasta.join(format!("{n:06}-{tipo}-{chave}.xml")),
+                    xml.as_bytes(),
+                )?;
+            }
+        }
+
+        total += documentos.len();
+        let ultimo = lote.get("ultimoNsu").and_then(Value::as_u64).unwrap_or(nsu);
+        // Sem avanço o laço giraria para sempre; melhor parar e dizer.
+        if ultimo <= nsu {
+            eprintln!("aviso: o ADN não avançou o NSU ({nsu} -> {ultimo}); parando aqui");
+            break;
+        }
+        nsu = ultimo;
+        if uma_pagina {
+            break;
+        }
+    }
+
+    if json {
+        imprimir_json(&Value::Array(lotes));
+    } else {
+        println!("\n{total} documento(s), até o NSU {nsu} ({ambiente})");
+        if let Some(pasta) = salvar_em {
+            println!("XML gravado em {}", pasta.display());
+        }
+    }
+    Ok(EXIT_OK)
 }
 
 // ------------------------------------------------------------------- config

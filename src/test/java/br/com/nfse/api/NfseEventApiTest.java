@@ -64,7 +64,7 @@ class NfseEventApiTest {
         NfseEmissionService emission = new NfseEmissionService(
                 DryRunTestSupport.builder(p12), dryRun, sefinClient,
                 DryRunTestSupport.numbering(), DryRunTestSupport.emissions());
-        ApiRoutes routes = new ApiRoutes(emission, events, sefinClient, new DanfseGenerator(),
+        ApiRoutes routes = new ApiRoutes(emission, events, sefinClient, DryRunTestSupport.adn(), new DanfseGenerator(),
                 dryRun, new CertificateLoader(DryRunTestSupport.localProps(p12)),
                 new HealthCheck(new CertificateLoader(DryRunTestSupport.localProps(p12))),
                 DryRunTestSupport.renderGate(),

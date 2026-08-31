@@ -88,7 +88,7 @@ class NfseApiTest {
         NfseEventService events = new NfseEventService(
                 new EventBuilder(props, BrasiliaTime.clock()),
                 new PedRegEventoSchemaValidator(), signer, verifier, sefinClient);
-        return new ApiRoutes(emission, events, sefinClient, new DanfseGenerator(),
+        return new ApiRoutes(emission, events, sefinClient, DryRunTestSupport.adn(), new DanfseGenerator(),
                 dryRun, loader, new HealthCheck(loader), gate,
                 DryRunTestSupport.numbering(), DryRunTestSupport.emissions(), props, br.com.nfse.http.Json.mapper());
     }

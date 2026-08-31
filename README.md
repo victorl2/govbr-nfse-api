@@ -102,6 +102,24 @@ curl -s localhost:8080/nfse/{chaveAcesso}/xml          # a NFS-e autorizada
 curl -s 'localhost:8080/internal/emissions?limit=20'   # tentativas recentes
 ```
 
+### Registro nacional (ADN)
+
+`/internal/emissions` conta o que **este serviço** emitiu. O ADN (Ambiente de
+Dados Nacional) conta o que **existe nacionalmente** para o CNPJ, inclusive notas
+emitidas pelo portal ou por outro sistema, e notas em que outra pessoa indicou
+você como tomador ou intermediário. É por aí que se reencontra uma nota cuja
+resposta se perdeu.
+
+```bash
+curl -s 'localhost:8080/nfse/distribuicao?nsu=0'            # lote a partir do NSU
+curl -s 'localhost:8080/nfse/distribuicao?nsu=0&comXml=true' # com o XML de cada documento
+```
+
+O `nsu` é um cursor **exclusivo**: pedir 0 devolve a partir do NSU 1. Caminhe
+passando o `ultimoNsu` recebido até o lote vir vazio. Confirmado ao vivo em
+produção restrita, incluindo o detalhe de que o fim da lista chega como **404
+com o código E2220**, e não como uma lista vazia.
+
 > **Monte `/var/lib/nfse`.** Guarda os contadores e todas as notas emitidas, e
 > nenhum dos dois é reconstituível. Uma nota rejeitada localmente devolve seu
 > número; uma rejeitada **pela SEFIN** o mantém, porque aquele número foi gasto.

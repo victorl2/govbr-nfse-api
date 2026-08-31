@@ -1,5 +1,6 @@
 package br.com.nfse.api;
 
+import br.com.nfse.adn.AdnClient;
 import br.com.nfse.certificate.CertificateLoader;
 import br.com.nfse.config.NfseProperties;
 import br.com.nfse.danfse.DanfseGenerator;
@@ -37,6 +38,7 @@ public final class ApiRoutes {
     private final NfseEventService eventService;
     private final SefinClient sefinClient;
     private final DanfseGenerator danfseGenerator;
+    private final AdnClient adnClient;
     private final DpsDryRunService dryRunService;
     private final CertificateLoader certificateLoader;
     private final HealthCheck healthCheck;
@@ -47,7 +49,8 @@ public final class ApiRoutes {
     private final ObjectMapper json;
 
     public ApiRoutes(NfseEmissionService emissionService, NfseEventService eventService,
-                     SefinClient sefinClient, DanfseGenerator danfseGenerator,
+                     SefinClient sefinClient, AdnClient adnClient,
+                     DanfseGenerator danfseGenerator,
                      DpsDryRunService dryRunService, CertificateLoader certificateLoader,
                      HealthCheck healthCheck, ConcurrencyGate renderGate,
                      NumberingStore numbering, EmissionStore emissions,
@@ -55,6 +58,7 @@ public final class ApiRoutes {
         this.emissionService = emissionService;
         this.eventService = eventService;
         this.sefinClient = sefinClient;
+        this.adnClient = adnClient;
         this.danfseGenerator = danfseGenerator;
         this.dryRunService = dryRunService;
         this.certificateLoader = certificateLoader;
@@ -112,6 +116,18 @@ public final class ApiRoutes {
         api.route("GET", "/internal/emissions", req ->
                 ok(emissions.recent(limit(req.query("limit"), 50))));
 
+        // ---- o registro NACIONAL, que é outra pergunta: /internal/emissions diz
+        // o que este serviço emitiu; a distribuição do ADN diz o que existe para
+        // este CNPJ, inclusive notas emitidas pelo portal ou por outro sistema, e
+        // notas em que outra pessoa nos indicou. É por aqui que se reencontra uma
+        // nota cuja resposta se perdeu.
+        api.route("GET", "/nfse/distribuicao", req -> {
+            long nsu = nsu(req.query("nsu"));
+            AdnClient.Distribuicao lote = adnClient.distribuicao(nsu);
+            boolean comXml = Boolean.parseBoolean(req.query("comXml"));
+            return ok(comXml ? lote : semXml(lote));
+        });
+
         // ---- numbering. Readable always; seedable because séries 1–18 were
         // issued before this counter existed and must not be handed out again.
         api.route("GET", "/internal/numbering", req -> ok(numberingState()));
@@ -143,6 +159,35 @@ public final class ApiRoutes {
             HealthReport report = healthCheck.report();
             return Response.json(report.httpStatus(), json.writeValueAsBytes(report));
         });
+    }
+
+    private static long nsu(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return 0L;
+        }
+        try {
+            long value = Long.parseLong(raw.trim());
+            if (value < 0) {
+                throw new HttpApi.BadRequest("nsu não pode ser negativo");
+            }
+            return value;
+        } catch (NumberFormatException e) {
+            throw new HttpApi.BadRequest("nsu inválido: " + raw);
+        }
+    }
+
+    /**
+     * Sem o XML por padrão: cada documento traz alguns KB, e a pergunta usual é
+     * "quais notas existem", não "me devolva todas elas". {@code ?comXml=true}
+     * traz o documento inteiro.
+     */
+    private static AdnClient.Distribuicao semXml(AdnClient.Distribuicao lote) {
+        List<AdnClient.Documento> resumo = lote.documentos().stream()
+                .map(d -> new AdnClient.Documento(
+                        d.nsu(), d.chaveAcesso(), d.tipoDocumento(), d.dataHoraGeracao(), null))
+                .toList();
+        return new AdnClient.Distribuicao(
+                lote.status(), lote.ambiente(), resumo, lote.mensagens(), lote.ultimoNsu());
     }
 
     /** Non-sensitive certificate metadata plus a live mTLS probe. */

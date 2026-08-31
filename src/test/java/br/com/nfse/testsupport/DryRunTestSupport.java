@@ -1,5 +1,7 @@
 package br.com.nfse.testsupport;
 
+import br.com.nfse.adn.AdnClient;
+import org.springframework.web.client.RestClient;
 import br.com.nfse.certificate.CertificateLoader;
 import br.com.nfse.config.BrasiliaTime;
 import br.com.nfse.config.Environment;
@@ -160,4 +162,14 @@ public final class DryRunTestSupport {
             throw new IllegalStateException("test XML failed to parse: " + e.getMessage(), e);
         }
     }
+
+    /**
+     * ADN inerte. Estes testes não exercitam a distribuição; apontar para uma
+     * porta morta faz qualquer uso acidental falhar de forma legível, em vez de
+     * estourar um NullPointerException sem explicação.
+     */
+    public static AdnClient adn() {
+        return new AdnClient(RestClient.builder().baseUrl("http://localhost:1").build());
+    }
 }
+

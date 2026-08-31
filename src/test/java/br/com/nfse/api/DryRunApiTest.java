@@ -52,7 +52,7 @@ class DryRunApiTest {
                         DryRunTestSupport.numbering(), DryRunTestSupport.emissions()),
                 new NfseEventService(new EventBuilder(DryRunTestSupport.localProps(p12), BrasiliaTime.clock()),
                         new PedRegEventoSchemaValidator(), signer, verifier, sefinClient),
-                sefinClient, new DanfseGenerator(), dryRun,
+                sefinClient, DryRunTestSupport.adn(), new DanfseGenerator(), dryRun,
                 new CertificateLoader(DryRunTestSupport.localProps(p12)),
                 new HealthCheck(new CertificateLoader(DryRunTestSupport.localProps(p12))),
                 DryRunTestSupport.renderGate(),

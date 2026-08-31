@@ -70,7 +70,7 @@ class NumberingApiTest {
                         numbering, emissions),
                 new NfseEventService(new EventBuilder(props, BrasiliaTime.clock()),
                         new PedRegEventoSchemaValidator(), signer, verifier, sefinClient),
-                sefinClient, new DanfseGenerator(), dryRun, loader, new HealthCheck(loader),
+                sefinClient, DryRunTestSupport.adn(), new DanfseGenerator(), dryRun, loader, new HealthCheck(loader),
                 DryRunTestSupport.renderGate(), numbering, emissions, props, Json.mapper());
         return TestApi.serving(routes::register);
     }

@@ -117,6 +117,11 @@ impl Client {
         self.get_json("/internal/numbering")
     }
 
+    /// Um lote da distribuição do ADN a partir de `nsu` (cursor exclusivo).
+    pub fn distribuicao(&self, nsu: u64, com_xml: bool) -> Result<Value> {
+        self.get_json(&format!("/nfse/distribuicao?nsu={nsu}&comXml={com_xml}"))
+    }
+
     // ----------------------------------------------------------- write paths
 
     pub fn seed_numbering(&self, serie: &str, last_consumed: u64) -> Result<Value> {
