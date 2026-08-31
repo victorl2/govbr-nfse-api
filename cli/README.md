@@ -28,10 +28,17 @@ Procura nesta ordem: `--config`, `$NFSE_CLI_CONFIG`, `./.nfse-cli/config.json`
 configuração por cliente ou por empresa.
 
 ```bash
-nfse config                                        # onde está e o que tem dentro
-nfse config ambiente restrita --url https://nfse.interno:8443
-nfse config ambiente restrita                      # só troca o ativo
+nfse config                                     # onde está e o que tem dentro
+nfse config ambiente uat  --url http://localhost:8080
+nfse config ambiente prod --url http://localhost:8080
+nfse config ambiente uat                        # troca o ativo
+nfse emitir --ambiente prod ...                 # usa um ambiente só nesta chamada
 ```
+
+> O nome do ambiente aqui escolhe apenas **uma URL**. Quem decide o `tpAmb` é o
+> `NFSE_PROFILE` do serviço que está atendendo naquela URL. Por isso a CLI não
+> confia no nome local: antes de emitir ela pergunta ao serviço em que ambiente
+> fiscal ele está e mostra a resposta dele na confirmação.
 
 O endereço vem, em ordem: `--url`, `$NFSE_URL`, ambiente ativo do config.
 **Nenhum segredo entra neste arquivo**: o certificado e-CNPJ e sua senha vivem
@@ -72,7 +79,8 @@ nfse emitir --valor 45000.00 --valor-moeda 8900.00 --competencia 2026-08-31
 ```bash
 nfse health                                   # serviço no ar? certificado válido?
 nfse validar   -a venda.json                 # monta e valida, sem transmitir
-nfse emitir    -a venda.json                 # emite de verdade
+nfse emitir    -a venda.json                 # emite (pede confirmação)
+nfse emitir    -a venda.json -y             # sem perguntar, para script
 nfse emitir    -a venda.json --salvar-xml nota.xml
 
 nfse consultar CHAVE                         # registro local da nota
@@ -107,6 +115,31 @@ nfse distribuicao --nsu 12              # só o que veio depois do NSU 12
 nfse distribuicao --uma-pagina          # um lote só
 nfse distribuicao --salvar-em ./notas   # grava cada XML em arquivo
 ```
+
+## Confirmação antes de emitir
+
+`emitir` e `cancelar` mostram um resumo do documento e pedem confirmação. O
+cabeçalho traz o **ambiente fiscal informado pelo próprio serviço**, não o nome
+do ambiente no config local, porque é esse o mal-entendido que faz alguém emitir
+uma nota com validade legal achando que estava em homologação.
+
+```
+=====================================================
+  PRODUÇÃO (tpAmb=1) — a nota terá VALIDADE LEGAL
+  sefin: https://sefin.nfse.gov.br/SefinNacional
+-----------------------------------------------------
+  emitente    ...
+  tomador     ...
+  série 40000   número próximo da sequência
+  competência 2026-08-31
+  valor       R$ 45000.00   |   8900.00 (moeda 220)
+=====================================================
+EMITIR esta nota em PRODUÇÃO? [s/N]
+```
+
+Só `s`, `sim`, `y` ou `yes` seguem adiante; Enter vazio não emite. Em script use
+`-y`/`--sim`. **Sem terminal e sem `--sim` a CLI recusa e sai com 1** em vez de
+emitir sem consentimento.
 
 ## Códigos de saída
 

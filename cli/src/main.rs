@@ -40,6 +40,10 @@ struct Cli {
     #[arg(long, global = true, env = "NFSE_URL")]
     url: Option<String>,
 
+    /// Usa este ambiente do config só nesta chamada, sem trocar o ativo
+    #[arg(long, global = true)]
+    ambiente: Option<String>,
+
     /// Caminho do config (padrão: ./.nfse-cli/config.json ou ~/.nfse-cli/config.json)
     #[arg(long, global = true, env = "NFSE_CLI_CONFIG")]
     config: Option<PathBuf>,
@@ -77,6 +81,9 @@ enum Comando {
         /// Grava o XML da NFS-e autorizada neste caminho
         #[arg(long)]
         salvar_xml: Option<PathBuf>,
+        /// Não pede confirmação (para uso em script)
+        #[arg(short = 'y', long)]
+        sim: bool,
     },
 
     /// Ambiente ativo e modelos de venda
@@ -121,6 +128,9 @@ enum Comando {
         /// Só valida o pedido, sem transmitir
         #[arg(long)]
         simular: bool,
+        /// Não pede confirmação (para uso em script)
+        #[arg(short = 'y', long)]
+        sim: bool,
     },
     /// Lê um evento registrado
     Evento {
@@ -261,11 +271,26 @@ fn main() -> ExitCode {
         eprintln!("config criado em {}", config.caminho.display());
     }
 
-    // --url ganha do config; sem ele, vale o ambiente ativo.
-    let url = cli
-        .url
-        .clone()
-        .unwrap_or_else(|| config.url_ativa().to_string());
+    // Precedência: --url, --ambiente, NFSE_URL (já lido em cli.url), ambiente ativo.
+    let url = match (&cli.url, &cli.ambiente) {
+        (Some(url), _) => url.clone(),
+        (None, Some(nome)) => match config.dados.ambientes.get(nome) {
+            Some(a) => a.url.clone(),
+            None => {
+                let nomes: Vec<&str> = config.dados.ambientes.keys().map(String::as_str).collect();
+                eprintln!(
+                    "erro: ambiente '{nome}' não existe no config. Disponíveis: {}",
+                    if nomes.is_empty() {
+                        "nenhum".to_string()
+                    } else {
+                        nomes.join(", ")
+                    }
+                );
+                return ExitCode::from(EXIT_ERRO);
+            }
+        },
+        (None, None) => config.url_ativa().to_string(),
+    };
     let client = Client::new(&url, Duration::from_secs(cli.timeout));
 
     match executar(&cli, &client, &mut config) {
@@ -358,8 +383,17 @@ fn executar(cli: &Cli, client: &Client, config: &mut Config) -> client::Result<u
             )
         }
 
-        Comando::Emitir { venda, salvar_xml } => {
-            let resposta = client.send(montar_venda(venda, config)?)?;
+        Comando::Emitir {
+            venda,
+            salvar_xml,
+            sim,
+        } => {
+            let documento = montar_venda(venda, config)?;
+            if !confirmar_emissao(client, &documento, *sim)? {
+                println!("cancelado, nada foi transmitido");
+                return Ok(EXIT_OK);
+            }
+            let resposta = client.send(documento)?;
             if let Some(caminho) = salvar_xml {
                 if let Some(xml) = resposta.get("nfseXml").and_then(Value::as_str) {
                     escrever(caminho, xml.as_bytes())?;
@@ -422,6 +456,7 @@ fn executar(cli: &Cli, client: &Client, config: &mut Config) -> client::Result<u
             justificativa,
             autor,
             simular,
+            sim,
         } => {
             // O XSD oficial exige 15 caracteres. Barrar aqui evita uma ida à
             // SEFIN para receber a mesma recusa.
@@ -436,6 +471,10 @@ fn executar(cli: &Cli, client: &Client, config: &mut Config) -> client::Result<u
             corpo.insert("xMotivo".into(), Value::String(justificativa.clone()));
             if let Some(cnpj) = autor {
                 corpo.insert("cnpjAutor".into(), Value::String(cnpj.clone()));
+            }
+            if !*simular && !confirmar_cancelamento(client, chave, justificativa, *sim)? {
+                println!("cancelado, nada foi transmitido");
+                return Ok(EXIT_OK);
             }
             let resposta = client.cancel(chave, Value::Object(corpo), *simular)?;
             if cli.json {
@@ -511,6 +550,150 @@ fn executar(cli: &Cli, client: &Client, config: &mut Config) -> client::Result<u
             Ok(EXIT_OK)
         }
     }
+}
+
+// ------------------------------------------------------------- confirmação
+
+/// O ambiente fiscal é do SERVIÇO, não do config local: o `--ambiente` da CLI só
+/// escolhe uma URL, enquanto quem decide o tpAmb é o NFSE_PROFILE de quem está
+/// rodando o serviço. Perguntar a ele evita o pior mal-entendido possível aqui,
+/// que é achar que se está em homologação e emitir uma nota com validade legal.
+fn ambiente_do_servico(client: &Client) -> (String, i64, String) {
+    match client.connectivity() {
+        Ok(v) => (
+            v.get("environment")
+                .and_then(Value::as_str)
+                .unwrap_or("DESCONHECIDO")
+                .to_string(),
+            v.get("tpAmb").and_then(Value::as_i64).unwrap_or(0),
+            v.get("sefinBaseUrl")
+                .and_then(Value::as_str)
+                .unwrap_or("?")
+                .to_string(),
+        ),
+        Err(_) => ("DESCONHECIDO".to_string(), 0, "?".to_string()),
+    }
+}
+
+fn campo(v: &Value, caminho: &[&str]) -> String {
+    let mut atual = v;
+    for c in caminho {
+        match atual.get(c) {
+            Some(prox) => atual = prox,
+            None => return "-".to_string(),
+        }
+    }
+    atual
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| "-".to_string())
+}
+
+/// Mostra o que será emitido e pede confirmação. `tpAmb=1` é nota com validade
+/// legal, e o aviso muda de tom por isso.
+fn confirmar_emissao(client: &Client, documento: &Value, sim: bool) -> client::Result<bool> {
+    let (ambiente, tp_amb, sefin) = ambiente_do_servico(client);
+    let producao = tp_amb == 1;
+
+    println!("=====================================================");
+    if producao {
+        println!("  PRODUÇÃO (tpAmb=1) — a nota terá VALIDADE LEGAL");
+    } else {
+        println!("  {ambiente} (tpAmb={tp_amb}) — nota SEM valor legal");
+    }
+    println!("  sefin: {sefin}");
+    println!("-----------------------------------------------------");
+    println!("  emitente    {}", campo(documento, &["emitter", "cnpj"]));
+    println!(
+        "  tomador     {} ({})",
+        campo(documento, &["tomador", "nome"]),
+        campo(documento, &["tomador", "enderecoExterior", "pais"])
+    );
+    println!(
+        "  serviço     {} / {}   NBS {}",
+        campo(documento, &["service", "cTribNac"]),
+        campo(documento, &["service", "cTribMun"]),
+        campo(documento, &["service", "nbs"])
+    );
+    println!(
+        "              {}",
+        campo(documento, &["service", "description"])
+    );
+    let numero = campo(documento, &["dps", "number"]);
+    println!(
+        "  série {}   número {}",
+        campo(documento, &["dps", "serie"]),
+        if numero == "-" {
+            "próximo da sequência".to_string()
+        } else {
+            numero
+        }
+    );
+    println!("  competência {}", campo(documento, &["dps", "dCompet"]));
+    println!(
+        "  valor       R$ {}   |   {} (moeda {})",
+        campo(documento, &["values", "vServ"]),
+        campo(documento, &["comercioExterior", "vServMoeda"]),
+        campo(documento, &["comercioExterior", "tpMoeda"])
+    );
+    println!("=====================================================");
+
+    perguntar(
+        if producao {
+            "EMITIR esta nota em PRODUÇÃO?"
+        } else {
+            "Emitir?"
+        },
+        sim,
+    )
+}
+
+fn confirmar_cancelamento(
+    client: &Client,
+    chave: &str,
+    justificativa: &str,
+    sim: bool,
+) -> client::Result<bool> {
+    let (ambiente, tp_amb, _) = ambiente_do_servico(client);
+    println!("=====================================================");
+    println!("  {ambiente} (tpAmb={tp_amb})");
+    println!("  cancelar a nota {chave}");
+    println!("  motivo: {justificativa}");
+    println!("=====================================================");
+    perguntar("CANCELAR esta nota?", sim)
+}
+
+/// Sem terminal não há como perguntar, e seguir em frente calado seria emitir
+/// sem consentimento. Nesse caso exige-se o --sim explícito.
+fn perguntar(pergunta: &str, sim: bool) -> client::Result<bool> {
+    use std::io::{BufRead, IsTerminal, Write};
+    if sim {
+        return Ok(true);
+    }
+    if !std::io::stdin().is_terminal() {
+        return Err(Error::Local(
+            "sem terminal para confirmar. Rode de forma interativa ou passe --sim".into(),
+        ));
+    }
+    print!("{pergunta} [s/N] ");
+    std::io::stdout()
+        .flush()
+        .map_err(|e| Error::Local(e.to_string()))?;
+    let mut resposta = String::new();
+    std::io::stdin()
+        .lock()
+        .read_line(&mut resposta)
+        .map_err(|e| Error::Local(e.to_string()))?;
+    Ok(resposta_positiva(&resposta))
+}
+
+/// Só um "sim" explícito vale. Qualquer outra coisa, incluindo Enter vazio,
+/// significa não emitir: o default seguro aqui é não fazer nada.
+fn resposta_positiva(resposta: &str) -> bool {
+    matches!(
+        resposta.trim().to_lowercase().as_str(),
+        "s" | "sim" | "y" | "yes"
+    )
 }
 
 // ------------------------------------------------------- distribuição (ADN)
@@ -837,11 +1020,26 @@ fn resumir_emissao(resposta: &Value) {
         .get("status")
         .and_then(Value::as_str)
         .unwrap_or("?");
-    println!("status: {status}");
-    if let Some(chave) = resposta.get("chaveAcesso").and_then(Value::as_str) {
-        println!("chave de acesso: {chave}");
-    }
+    let chave = resposta.get("chaveAcesso").and_then(Value::as_str);
     imprimir_achados(resposta);
+    println!();
+    match status {
+        "AUTHORIZED" => {
+            println!("NOTA EMITIDA");
+            if let Some(c) = chave {
+                println!("  chave de acesso: {c}");
+                println!();
+                println!("  nfse danfse {c} -s danfse.pdf");
+                println!("  nfse consultar {c}");
+            }
+        }
+        // Repetir uma emissão indeterminada é o caminho para a nota duplicada.
+        "SUBMIT_FAILED" => {
+            println!("INDETERMINADO: a transmissão caiu e não se sabe se a nota foi criada.");
+            println!("  NÃO reenvie às cegas; consulte antes com 'nfse distribuicao'.");
+        }
+        outro => println!("NÃO EMITIDA ({outro}). Corrija os achados acima."),
+    }
 }
 
 fn resumir_evento(resposta: &Value) {

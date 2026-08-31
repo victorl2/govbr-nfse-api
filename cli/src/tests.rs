@@ -388,3 +388,16 @@ fn substituicao_cria_os_niveis_que_faltam() {
     );
     assert_eq!(venda["service"]["description"], "Consultoria");
 }
+
+// ----------------------------------------------------------- confirmação
+
+#[test]
+fn so_um_sim_explicito_emite() {
+    for ok in ["s", "S", "sim", "SIM", "y", "yes", " s \n"] {
+        assert!(resposta_positiva(ok), "deveria aceitar {ok:?}");
+    }
+    // Enter vazio é a resposta mais provável de quem hesitou: não pode emitir.
+    for nao in ["", "\n", "n", "não", "nao", "no", "talvez", "x"] {
+        assert!(!resposta_positiva(nao), "não deveria aceitar {nao:?}");
+    }
+}
