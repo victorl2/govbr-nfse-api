@@ -109,6 +109,9 @@ public class DpsBuilder {
         } else {
             text(doc, prest, "CPF", emitter.cpf());
         }
+        // Ordem do XSD (TCInfoPrestador): CNPJ/CPF … fone, email, regTrib.
+        optional(doc, prest, "fone", emitter.fone());
+        optional(doc, prest, "email", emitter.email());
         Element regTrib = child(doc, prest, "regTrib");
         text(doc, regTrib, "opSimpNac", emitter.opSimpNac());
         if (emitter.regApTribSN() != null) {

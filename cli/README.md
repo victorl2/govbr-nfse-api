@@ -50,10 +50,22 @@ nfse emitir --valor 2500.00 --competencia 2026-08-31
 nfse emitir -M mensal --valor 2500.00 --descricao "Consultoria, agosto"
 ```
 
-Substituições disponíveis em `emitir` e `validar`: `--valor` (`values.vServ`),
-`--competencia` (`dps.dCompet`), `--emissao` (`dps.dhEmi`), `--serie`
-(`dps.serie`) e `--descricao` (`service.description`). O resto do modelo segue
-intacto. Sem `-a` e sem `-M`, vale o modelo padrão.
+Substituições disponíveis em `emitir` e `validar`: `--valor` (`values.vServ`,
+em reais), `--valor-moeda` (`comercioExterior.vServMoeda`, na moeda
+estrangeira), `--competencia` (`dps.dCompet`), `--emissao` (`dps.dhEmi`),
+`--serie` (`dps.serie`) e `--descricao` (`service.description`). O resto do
+modelo segue intacto. Sem `-a` e sem `-M`, vale o modelo padrão.
+
+Numa nota de exportação o valor aparece nos dois lugares, então troque os dois:
+
+```bash
+nfse emitir --valor 45000.00 --valor-moeda 8900.00 --competencia 2026-08-31
+```
+
+> **Série:** a SEFIN reserva as séries a partir de **50000** para o Emissor Web e
+> recusa com **E0010** quem emite por software próprio nessa faixa. Para emitir
+> pela API use uma série **até 49999** (confirmado ao vivo em restrita). Isso
+> também evita colidir com a numeração das notas emitidas pelo portal.
 
 ## Uso
 

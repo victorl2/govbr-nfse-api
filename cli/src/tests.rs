@@ -353,6 +353,32 @@ fn substituicao_altera_apenas_o_campo_pedido() {
 }
 
 #[test]
+fn exportacao_troca_as_duas_moedas() {
+    // Numa nota de exportação o valor existe em dois lugares: reais em
+    // values.vServ e moeda estrangeira em comercioExterior.vServMoeda. Trocar só
+    // um deixaria a nota internamente incoerente.
+    let mut venda = serde_json::json!({
+        "values": {"vServ": "43002.73", "cPaisResult": "CA"},
+        "comercioExterior": {"vServMoeda": "8480.00", "tpMoeda": "220"}
+    });
+    config::definir(
+        &mut venda,
+        &["values", "vServ"],
+        serde_json::json!("45000.00"),
+    );
+    config::definir(
+        &mut venda,
+        &["comercioExterior", "vServMoeda"],
+        serde_json::json!("8900.00"),
+    );
+    assert_eq!(venda["values"]["vServ"], "45000.00");
+    assert_eq!(venda["comercioExterior"]["vServMoeda"], "8900.00");
+    // o resto do modelo continua de pé
+    assert_eq!(venda["values"]["cPaisResult"], "CA");
+    assert_eq!(venda["comercioExterior"]["tpMoeda"], "220");
+}
+
+#[test]
 fn substituicao_cria_os_niveis_que_faltam() {
     let mut venda = serde_json::json!({});
     config::definir(

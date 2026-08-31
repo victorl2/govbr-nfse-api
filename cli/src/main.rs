@@ -185,9 +185,12 @@ struct EntradaVenda {
     /// Modelo salvo no config
     #[arg(short = 'M', long)]
     modelo: Option<String>,
-    /// Substitui values.vServ
+    /// Substitui values.vServ (valor em reais)
     #[arg(long)]
     valor: Option<String>,
+    /// Substitui comercioExterior.vServMoeda (valor na moeda estrangeira)
+    #[arg(long)]
+    valor_moeda: Option<String>,
     /// Substitui dps.dCompet (AAAA-MM-DD)
     #[arg(long)]
     competencia: Option<String>,
@@ -751,6 +754,13 @@ fn montar_venda(entrada: &EntradaVenda, config: &Config) -> client::Result<Value
         config::definir(
             &mut venda,
             &["values", "vServ"],
+            Value::String(valor.clone()),
+        );
+    }
+    if let Some(valor) = &entrada.valor_moeda {
+        config::definir(
+            &mut venda,
+            &["comercioExterior", "vServMoeda"],
             Value::String(valor.clone()),
         );
     }

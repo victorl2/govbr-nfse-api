@@ -32,15 +32,27 @@ public record EmitNfseRequest(
         this(emitter, dps, service, values, ibsCbs, tomador, intermediario, comercioExterior, null);
     }
 
-    /** Who is emitting. Exactly one of cnpj/cpf. opSimpNac: 1=Não Optante, 2=MEI, 3=ME/EPP. */
+    /**
+     * Who is emitting. Exactly one of cnpj/cpf. opSimpNac: 1=Não Optante, 2=MEI,
+     * 3=ME/EPP. {@code fone} and {@code email} are optional in the layout but are
+     * printed on the DANFSe as the emitter's contact, so a note that carried them
+     * before should keep carrying them.
+     */
     public record Emitter(
             String cnpj,
             String cpf,
             String municipality,
             String opSimpNac,
             String regApTribSN,
-            String regEspTrib
-    ) {}
+            String regEspTrib,
+            String fone,
+            String email
+    ) {
+        public Emitter(String cnpj, String cpf, String municipality, String opSimpNac,
+                       String regApTribSN, String regEspTrib) {
+            this(cnpj, cpf, municipality, opSimpNac, regApTribSN, regEspTrib, null, null);
+        }
+    }
 
     /**
      * Cancelamento por substituição — set this to replace an existing NFS-e. SEFIN
