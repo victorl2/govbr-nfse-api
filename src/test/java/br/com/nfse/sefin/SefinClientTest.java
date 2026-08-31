@@ -124,4 +124,26 @@ class SefinClientTest {
                 .andRespond(withSuccess("{\"ok\":true}", MediaType.APPLICATION_JSON));
         assertEquals("{\"ok\":true}", client.getNfse("123"));
     }
+
+    /**
+     * Pedir a um ambiente uma chave do outro é o erro mais fácil de cometer, e
+     * era o que virava 500 com um JSON cru da SEFIN colado na mensagem.
+     */
+    @Test
+    void anAccessKeyFromAnotherEnvironmentIsNotFoundNotAFailure() {
+        server.expect(requestTo("https://sefin.test/SefinNacional/nfse/330455722"))
+                .andExpect(method(GET))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                              {"tipoAmbiente":2,"erro":{"codigo":"E2401",
+                               "descricao":"Chave de acesso não encontrada."}}
+                              """));
+
+        SefinClient.UnknownAccessKey erro = org.junit.jupiter.api.Assertions.assertThrows(
+                SefinClient.UnknownAccessKey.class, () -> client.getNfse("330455722"));
+        assertTrue(erro.getMessage().contains("330455722"));
+        assertTrue(erro.getMessage().contains("ambiente"), erro.getMessage());
+    }
 }
+

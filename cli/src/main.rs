@@ -486,7 +486,7 @@ fn executar(
             if cli.json {
                 imprimir_json(&resposta);
             } else {
-                resumir_emissao(&resposta);
+                resumir_emissao(&resposta, cli.env.as_deref());
             }
             Ok(codigo_do_status(&resposta))
         }
@@ -1274,7 +1274,7 @@ fn resumir_health(corpo: &Value) {
     }
 }
 
-fn resumir_emissao(resposta: &Value) {
+fn resumir_emissao(resposta: &Value, env: Option<&str>) {
     let status = resposta
         .get("status")
         .and_then(Value::as_str)
@@ -1288,8 +1288,12 @@ fn resumir_emissao(resposta: &Value) {
             if let Some(c) = chave {
                 println!("  chave de acesso: {c}");
                 println!();
-                println!("  nfse danfse {c} -s danfse.pdf");
-                println!("  nfse consultar {c}");
+                // O --env tem de vir junto: sem ele o comando cai no ambiente
+                // ativo, e pedir à restrita uma chave de produção devolve
+                // "chave não encontrada", que parece problema na nota.
+                let e = env.map(|n| format!("--env {n} ")).unwrap_or_default();
+                println!("  nfse {e}danfse {c} -s danfse.pdf");
+                println!("  nfse {e}consultar {c}");
             }
         }
         // Repetir uma emissão indeterminada é o caminho para a nota duplicada.

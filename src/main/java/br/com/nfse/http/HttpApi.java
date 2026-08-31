@@ -89,7 +89,7 @@ public final class HttpApi {
             return route.handler().handle(new Request(exchange, vars, json));
         } catch (BadRequest e) {
             return problem(400, e.getMessage());
-        } catch (NotFound e) {
+        } catch (NotFound | br.com.nfse.sefin.SefinClient.UnknownAccessKey e) {
             return problem(404, e.getMessage());
         } catch (ConcurrencyGate.Overloaded e) {
             // 529 "Service Overloaded", not 503: 503 is the answer when the service

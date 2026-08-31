@@ -63,8 +63,28 @@ public class SefinClient {
     public String getNfse(String chaveAcesso) {
         return sefin.get()
                 .uri("/nfse/{c}", chaveAcesso)
-                .retrieve()
-                .body(String.class);
+                .exchange((request, response) -> {
+                    // "Esta chave não existe AQUI" é uma resposta, não uma falha:
+                    // acontece sempre que se pede a um ambiente uma chave do
+                    // outro. Deixar virar 500 esconde a causa atrás de um erro
+                    // interno e de um JSON cru da SEFIN.
+                    if (response.getStatusCode() == HttpStatus.NOT_FOUND) {
+                        throw new UnknownAccessKey(chaveAcesso);
+                    }
+                    if (!response.getStatusCode().is2xxSuccessful()) {
+                        throw new IllegalStateException("SEFIN answered "
+                                + response.getStatusCode() + " for GET /nfse/" + chaveAcesso);
+                    }
+                    return new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                });
+    }
+
+    /** The access key is not in the environment this client is pointed at. */
+    public static class UnknownAccessKey extends RuntimeException {
+        public UnknownAccessKey(String chaveAcesso) {
+            super("a SEFIN não conhece a chave " + chaveAcesso
+                    + " neste ambiente — confira se ela é do ambiente para onde este serviço aponta");
+        }
     }
 
     /** HEAD /dps/{id} — true if an NFS-e was already generated for this DPS id (idempotency probe). */
