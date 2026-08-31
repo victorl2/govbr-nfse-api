@@ -29,10 +29,10 @@ configuração por cliente ou por empresa.
 
 ```bash
 nfse config                                     # onde está e o que tem dentro
-nfse config ambiente uat  --url http://localhost:8080
-nfse config ambiente prod --url http://localhost:8080
-nfse config ambiente uat                        # troca o ativo
-nfse emitir --ambiente prod ...                 # usa um ambiente só nesta chamada
+nfse config env uat  --url http://localhost:8080
+nfse config env prod --url http://localhost:8080
+nfse config env uat                        # troca o ativo
+nfse emitir --env prod ...                 # usa um ambiente só nesta chamada
 ```
 
 > O nome do ambiente aqui escolhe apenas **uma URL**. Quem decide o `tpAmb` é o

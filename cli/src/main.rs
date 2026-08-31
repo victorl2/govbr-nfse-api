@@ -42,7 +42,7 @@ struct Cli {
 
     /// Usa este ambiente do config só nesta chamada, sem trocar o ativo
     #[arg(long, global = true)]
-    ambiente: Option<String>,
+    env: Option<String>,
 
     /// Caminho do config (padrão: ./.nfse-cli/config.json ou ~/.nfse-cli/config.json)
     #[arg(long, global = true, env = "NFSE_CLI_CONFIG")]
@@ -220,7 +220,7 @@ enum AcaoConfig {
     /// Mostra o caminho e o conteúdo do config
     Mostrar,
     /// Ativa um ambiente e, com --url, define o endereço dele
-    Ambiente {
+    Env {
         nome: String,
         #[arg(long)]
         url: Option<String>,
@@ -271,8 +271,8 @@ fn main() -> ExitCode {
         eprintln!("config criado em {}", config.caminho.display());
     }
 
-    // Precedência: --url, --ambiente, NFSE_URL (já lido em cli.url), ambiente ativo.
-    let url = match (&cli.url, &cli.ambiente) {
+    // Precedência: --url, --env, NFSE_URL (já lido em cli.url), ambiente ativo.
+    let url = match (&cli.url, &cli.env) {
         (Some(url), _) => url.clone(),
         (None, Some(nome)) => match config.dados.ambientes.get(nome) {
             Some(a) => a.url.clone(),
@@ -847,7 +847,7 @@ fn executar_config(
             Ok(EXIT_OK)
         }
 
-        Some(AcaoConfig::Ambiente { nome, url }) => {
+        Some(AcaoConfig::Env { nome, url }) => {
             if let Some(url) = url {
                 config
                     .dados
@@ -858,7 +858,7 @@ fn executar_config(
                 // padrão sem avisar, que é como se emite no lugar errado.
                 return Err(Error::Local(format!(
                     "o ambiente '{nome}' não tem endereço definido; \
-                     use: nfse config ambiente {nome} --url https://..."
+                     use: nfse config env {nome} --url https://..."
                 )));
             }
             config.dados.ambiente_ativo = nome.clone();
