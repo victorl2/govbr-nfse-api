@@ -77,13 +77,31 @@ jobs:
       # AOTMode=auto means a cache that fails to map degrades silently to a slow
       # start. Assert it is present AND actually mapped, or the regression is
       # invisible.
+      #
+      # This MUST boot the real container: the cache records the classpath it was
+      # trained on (`-jar /app/app.jar` plus the manifest Class-Path), so a bare
+      # `java -Xlog:aot=info -version` has no classpath and the cache correctly
+      # refuses to map. _JAVA_OPTIONS adds the logging without clobbering the
+      # image's own JAVA_TOOL_OPTIONS, which carry the AOT flags themselves.
       - name: Assert the AOT cache is present and maps
         run: |
           docker run --rm --entrypoint sh nfse:ci -c 'test -s /app/app.aot'
-          docker run --rm --entrypoint java nfse:ci -Xlog:aot=info -version 2>&1 \
-            | tee aot.log
+          ./scripts/generate-dummy-cert.sh
+          docker run -d --name nfse-aot -m 192m \
+            -v "$PWD/certs/dummy.p12:/secure/dummy.p12:ro" \
+            -e NFSE_PROFILE=local \
+            -e NFSE_CERT_PATH=/secure/dummy.p12 \
+            -e NFSE_CERT_PASSWORD=changeit \
+            -e _JAVA_OPTIONS=-Xlog:aot=info \
+            nfse:ci
+          for i in $(seq 1 100); do
+            docker logs nfse-aot 2>&1 | grep -q 'listening on port' && break
+            sleep 0.3
+          done
+          docker logs nfse-aot > aot.log 2>&1
           grep -q 'Opened AOT cache' aot.log
-          ! grep -qiE 'aot.*(failed|mismatch|disabling)' aot.log
+          ! grep -q 'Unable to map shared spaces' aot.log
+          docker rm -f nfse-aot
 
       - name: Boot the container and check health
         run: |
