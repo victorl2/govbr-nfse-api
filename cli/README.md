@@ -10,12 +10,26 @@ estáticas (musl) e rodam em qualquer distribuição, inclusive em contêineres
 
 ## Instalação
 
-Baixe o binário da sua plataforma em
-[Releases](https://github.com/victorl2/govbr-nfse-api/releases), ou compile:
+**Binário pronto.** Baixe o da sua plataforma em
+[Releases](https://github.com/victorl2/govbr-nfse-api/releases). O zip do GitHub
+não preserva a permissão de execução, então:
 
 ```bash
-cargo build --release      # -> target/release/nfse
+chmod +x nfse-aarch64-apple-darwin
+sudo mv nfse-aarch64-apple-darwin /usr/local/bin/nfse
 ```
+
+**Compilando.** `cargo install` põe o binário num diretório que já costuma estar
+no PATH (`~/.cargo/bin`), que é o que você quer:
+
+```bash
+cargo install --path cli     # -> ~/.cargo/bin/nfse
+nfse --version
+```
+
+`cargo build --release` também compila, mas deixa o binário em
+`cli/target/release/nfse`, sem colocá-lo no PATH. Depois de mudar o código,
+repita o `cargo install --path cli` para atualizar o comando instalado.
 
 ## Configuração
 
@@ -83,14 +97,14 @@ que um dia sai errada, e sair errada aqui significa emitir no ambiente trocado.
 devolve, e ela só existe em memória no instante em que o contêiner sobe.
 
 > Com uma tag móvel como `:latest`, a imagem local envelhece calada e passa a
-> rodar código antigo — responde normalmente e só falha no campo que mudou. Use
+> rodar código antigo: responde normalmente e só falha no campo que mudou. Use
 > `up --pull`, ou fixe uma tag de versão com `--imagem` para produção.
 
 ### Modelos: emitir mudando só valor e datas
 
 Guarde uma venda inteira uma vez; depois a emissão do mês muda o que varia.
 
-Pode haver quantos modelos você quiser — um por cliente, um por tipo de serviço.
+Pode haver quantos modelos você quiser: um por cliente, um por tipo de serviço.
 
 ```bash
 nfse config modelo salvar mensal -a venda.json --padrao
@@ -153,7 +167,8 @@ nfse emitir --valor 45000.00 --valor-moeda 8900.00 --competencia 2026-08-31
 ## Uso
 
 ```bash
-nfse health                                   # serviço no ar? certificado válido?
+nfse health                                  # serviço no ar? certificado válido?
+nfse conectividade                           # qual ambiente fiscal, e o mTLS funciona?
 nfse validar   -a venda.json                 # monta e valida, sem transmitir
 nfse emitir    -a venda.json                 # emite (pede confirmação)
 nfse emitir    -a venda.json -y             # sem perguntar, para script
@@ -249,6 +264,38 @@ else
     esac
 fi
 ```
+
+## Referência rápida
+
+| Comando | O que faz |
+|---|---|
+| `health` | Serviço no ar e certificado utilizável (503 se não). |
+| `conectividade` | Qual ambiente fiscal o serviço atende (`tpAmb`) e se o mTLS funciona. |
+| `certificado` | Dados do certificado carregado. |
+| `validar` | Monta, valida e assina a DPS. **Não transmite nada.** |
+| `emitir` | Emite a NFS-e. Pede confirmação; `-y` pula. |
+| `cancelar` | Cancela uma nota emitida. `--simular` só valida. |
+| `evento` | Lê um evento registrado numa nota. |
+| `consultar` | O registro local de uma nota. |
+| `xml` | O XML da NFS-e autorizada, como foi arquivado. |
+| `danfse` | Gera a DANFSe em PDF, pela chave ou de um XML local. |
+| `emissoes` | O que **este serviço** emitiu. |
+| `distribuicao` | O que existe no **registro nacional** (ADN) para o CNPJ. |
+| `numeracao` | Lê ou semeia os contadores de número por série. |
+| `validar-dps` | Valida uma DPS em XML que você já montou. |
+| `up` / `down` | Sobe e para o contêiner do serviço do ambiente. |
+| `config` | Ambientes, modelos e o docker de cada ambiente. |
+
+Globais em qualquer comando: `--env`, `--url`, `--config`, `--timeout`, `--json`.
+
+| Subcomando de `config` | O que faz |
+|---|---|
+| `config` (ou `config mostrar`) | Onde está o config e o que tem dentro. |
+| `config env <nome> [--url]` | Ativa um ambiente e, com `--url`, define o endereço. |
+| `config docker <nome> …` | Ensina o ambiente a subir o próprio contêiner. |
+| `config modelo salvar\|listar\|padrao\|remover` | Modelos de venda. |
+
+`nfse <comando> --help` mostra as opções de cada um.
 
 ## Desenvolvimento
 

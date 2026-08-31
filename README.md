@@ -34,8 +34,10 @@ nfse danfse CHAVE -s danfse.pdf
 ```
 
 Binários para Linux (estáticos, musl), macOS e Windows são publicados em cada
-release. Veja [`cli/`](cli) para instalação, todos os comandos e os códigos de
-saída, que distinguem "documento recusado" de "serviço fora do ar".
+release; compilando, `cargo install --path cli` põe o `nfse` no PATH. Veja
+[`cli/`](cli) para a referência de comandos, a configuração de ambientes e
+modelos, e os códigos de saída, que distinguem "documento recusado" de "serviço
+fora do ar" e de "não se sabe se a nota foi criada".
 
 ## Como executar
 Requer **JDK 25** e Maven.
