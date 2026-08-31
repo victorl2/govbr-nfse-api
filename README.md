@@ -6,12 +6,16 @@ Serviço para emissão de **NFS-e** (Nota Fiscal de Serviço eletrônica) pelo
 O serviço monta, valida, assina e transmite a DPS, registra eventos e gera a
 DANFSe localmente. Quem chama a API descreve a venda em JSON, nunca lida com XML.
 
-**Status:** emitindo, cancelando e substituindo notas em produção restrita.
+**Status: em produção.** A primeira NFS-e com validade legal foi emitida por este
+serviço em **31/08/2026**: DPS montada, validada, assinada e transmitida à SEFIN
+em `tpAmb=1`, autorizada, com a DANFSe gerada e a nota conferida no portal do
+emissor. Antes disso o mesmo fluxo foi exercitado à exaustão em produção restrita,
+incluindo cancelamento e substituição.
+
 Carga do certificado, mTLS, assinatura XMLDSig, validação XSD + lint de regras de
-negócio, emissão síncrona, eventos de cancelamento e substituição, DANFSe e
-numeração durável estão implementados e exercitados ao vivo. Para o go-live falta
-credenciamento, o mapeamento real do catálogo de serviços e a virada de profile,
-veja [docs/07](docs/07-sandbox-to-go-live.md).
+negócio, emissão síncrona, eventos, DANFSe, numeração durável e leitura do
+registro nacional (ADN) estão implementados e usados de verdade. O caminho até
+aqui está em [docs/07](docs/07-sandbox-to-go-live.md).
 
 ## Documentação
 → **[docs/README.md](docs/README.md)**, documentação completa de integração
@@ -72,6 +76,13 @@ classe. `values` também aceita `descontos` (incondicionado/condicionado),
 IRRF/CSLL/CP); `service.infoCompl` carrega `xInfComp`, `docRef` e `xPed`.
 `substituicao` (`chSubstda` + `cMotivo` + `xMotivo`) substitui uma nota existente:
 a SEFIN cancela a anterior e emite esta no lugar, na mesma chamada.
+
+> **Escolha a série com cuidado.** A SEFIN reserva as séries a partir de
+> **50000** para o Emissor Web e recusa com **E0010** quem emite por software
+> próprio nessa faixa. Emissão por API precisa de uma série **até 49999**, e usar
+> uma série nova evita colidir com a numeração das notas emitidas pelo portal.
+> (Confirmado ao vivo: 1, 900, 9999, 10000, 40000 e 49999 são aceitas; 50000,
+> 60000 e 70000 não.)
 
 Uma transmissão que falha **em trânsito** é ambígua, então o serviço consulta o id
 determinístico da DPS em `GET /dps/{id}` antes de reportar falha: se a SEFIN já

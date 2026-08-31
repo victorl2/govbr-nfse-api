@@ -1,5 +1,16 @@
 # 7. From Sandbox to Go-Live
 
+> **Go-live happened on 2026-08-31.** The first legally valid NFS-e was issued by
+> this service in `tpAmb=1`, authorised by SEFIN, DANFSe generated and the note
+> confirmed in the emitter portal. The checklist below is kept as the record of
+> how we got there; the Phase E items are ticked to what was actually verified.
+>
+> Two things learned in the process that are not obvious from the manuals:
+> **séries from 50000 up are reserved for the Emissor Web** (own software is
+> refused with `E0010`, so API emission needs a série ≤ 49999), and the **ADN
+> distribution API answers in restrita but drops the connection in produção**
+> with the same certificate SEFIN accepts, which is still unexplained.
+
 The path from first sandbox call to legally issuing real invoices.
 
 ## 7.1 The two environments, restated
@@ -76,12 +87,12 @@ depends on the city.
 
 ### What genuinely differs from restrita
 
-- [ ] **Real ICP-Brasil certificate:** same type (e-CNPJ A1), but a genuine,
+- [x] **Real ICP-Brasil certificate:** same type (e-CNPJ A1), but a genuine,
       valid, non-expired cert with the correct CNPJ raiz. Restrita may tolerate
       test certs; production will not.
-- [ ] **`tpAmb = 1`** in the DPS **and** base URLs → `*.nfse.gov.br`. The two
+- [x] **`tpAmb = 1`** in the DPS **and** base URLs → `*.nfse.gov.br`. The two
       must agree.
-- [ ] **Fresh numbering:** production `(série, nDPS)` is a clean sequence — do
+- [x] **Fresh numbering:** production `(série, nDPS)` is a clean sequence — do
       **not** carry over restrita numbers. Restrita documents have **no legal
       value** and are periodically wiped; there is **no data migration**.
 - [ ] **DANFSE / QR-code / verification links** point to production endpoints.
@@ -90,8 +101,8 @@ depends on the city.
 
 - **No separate per-developer API homologação/credenciamento** for the national
   emitter (unlike legacy municipal systems like São Paulo). Access is
-  **certificate-based** — a valid e-CNPJ is the credential. **[TO CONFIRM]** once
-  in restrita with the cert.
+  **certificate-based** — a valid e-CNPJ is the credential. **[CONFIRMED]**: notes
+  were issued in restrita and in produção with nothing but the e-CNPJ.
 
 ### Obligation timing (about *whether/when*, not *how*)
 
@@ -101,11 +112,14 @@ depends on the city.
 
 ### Cutover steps
 
-- [ ] Repeat the mTLS handshake against **produção** hosts with the production
-      certificate.
-- [ ] Flip config: base URLs → `*.nfse.gov.br`, `tpAmb` → `1`.
-- [ ] Issue one **controlled real NFS-e**, verify the DANFSE, and (if it was a
-      test) cancel it within the allowed window.
+- [x] Repeat the mTLS handshake against **produção** hosts with the production
+      certificate. *(`GET /ParametrosMunicipais` → 501 and `GET /dps/{id}` → 400/404,
+      identical to restrita: the certificate is accepted and routing works.)*
+- [x] Flip config: base URLs → `*.nfse.gov.br`, `tpAmb` → `1`. *(One
+      `NFSE_PROFILE=producao`; the profile pairs host and `tpAmb` so they cannot drift.)*
+- [x] Issue one **controlled real NFS-e** and verify the DANFSE. *(2026-08-31,
+      `AUTHORIZED`, DANFSe rendered, note visible in the portal. It was a genuine
+      invoice, so it was not cancelled.)*
 - [ ] Turn on monitoring/alerting (below) before routing real volume.
 
 ## 7.7 Operational readiness for go-live
