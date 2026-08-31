@@ -560,8 +560,8 @@ fn distribuicao(
         } else {
             if total == 0 {
                 println!(
-                    "{:<6} {:<7} {:<52} {}",
-                    "NSU", "TIPO", "CHAVE DE ACESSO", "GERADO EM"
+                    "{:<6} {:<7} {:<52} GERADO EM",
+                    "NSU", "TIPO", "CHAVE DE ACESSO"
                 );
             }
             for doc in &documentos {
