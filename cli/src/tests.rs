@@ -584,3 +584,23 @@ fn ida_e_volta_preserva_a_data() {
         assert_eq!(datas::para_br(&iso), br, "ida e volta mudou {br}");
     }
 }
+
+#[test]
+fn e0014_e_reconhecido_para_a_dica_de_numeracao() {
+    // E0014 quase sempre é o contador local atrás do que a SEFIN já tem, e a
+    // mensagem crua não diz isso. A dica depende de reconhecer o código.
+    let recusa = serde_json::json!({
+        "status": "REJECTED_BY_SEFIN",
+        "findings": [{
+            "severity": "ERROR", "stage": "SEFIN", "code": "E0014",
+            "message": "Conjunto de Série, Número, Código do Município Emissor e CNPJ já existe"
+        }]
+    });
+    assert!(tem_achado(&recusa, "E0014"));
+    assert!(!tem_achado(&recusa, "E0010"));
+
+    let sem = serde_json::json!({"status": "AUTHORIZED", "findings": []});
+    assert!(!tem_achado(&sem, "E0014"));
+    // Resposta sem o campo findings não pode explodir.
+    assert!(!tem_achado(&serde_json::json!({}), "E0014"));
+}

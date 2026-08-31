@@ -828,21 +828,40 @@ fn perguntar(pergunta: &str, sim: bool) -> client::Result<bool> {
     if sim {
         return Ok(true);
     }
-    if !std::io::stdin().is_terminal() {
-        return Err(Error::Local(
-            "sem terminal para confirmar. Rode de forma interativa ou passe --sim".into(),
-        ));
-    }
     print!("{pergunta} [s/N] ");
     std::io::stdout()
         .flush()
         .map_err(|e| Error::Local(e.to_string()))?;
+
     let mut resposta = String::new();
-    std::io::stdin()
-        .lock()
-        .read_line(&mut resposta)
-        .map_err(|e| Error::Local(e.to_string()))?;
-    Ok(resposta_positiva(&resposta))
+    if std::io::stdin().is_terminal() {
+        std::io::stdin()
+            .lock()
+            .read_line(&mut resposta)
+            .map_err(|e| Error::Local(e.to_string()))?;
+        return Ok(resposta_positiva(&resposta));
+    }
+
+    // stdin redirecionado não significa que não há alguém olhando: num terminal
+    // de verdade o /dev/tty continua lá. É o que sudo e git fazem.
+    match std::fs::File::open("/dev/tty") {
+        Ok(tty) => {
+            std::io::BufReader::new(tty)
+                .read_line(&mut resposta)
+                .map_err(|e| Error::Local(e.to_string()))?;
+            Ok(resposta_positiva(&resposta))
+        }
+        // Sem terminal nenhum, seguir em frente seria emitir sem consentimento.
+        Err(_) => {
+            println!();
+            Err(Error::Local(
+                "não há terminal para confirmar (stdin redirecionado e sem /dev/tty).\n\
+                 Rode este comando em um terminal, ou passe --sim para pular a confirmação.\n\
+                 Para uma nota de produção, prefira o terminal: --sim emite sem perguntar."
+                    .into(),
+            ))
+        }
+    }
 }
 
 /// Só um "sim" explícito vale. Qualquer outra coisa, incluindo Enter vazio,
@@ -1278,7 +1297,18 @@ fn resumir_emissao(resposta: &Value) {
             println!("INDETERMINADO: a transmissão caiu e não se sabe se a nota foi criada.");
             println!("  NÃO reenvie às cegas; consulte antes com 'nfse distribuicao'.");
         }
-        outro => println!("NÃO EMITIDA ({outro}). Corrija os achados acima."),
+        outro => {
+            println!("NÃO EMITIDA ({outro}). Corrija os achados acima.");
+            // E0014 quase sempre é o contador local atrás do que a SEFIN já tem
+            // — típico depois de trocar de máquina ou de diretório de dados.
+            if tem_achado(resposta, "E0014") {
+                println!();
+                println!("  E0014 é (série, número) que a SEFIN já tem: o contador local");
+                println!("  está atrás do que existe lá. Veja o maior número já usado e alinhe:");
+                println!("    nfse distribuicao");
+                println!("    nfse numeracao --serie <série> --ultimo-consumido <maior>");
+            }
+        }
     }
 }
 
@@ -1309,6 +1339,17 @@ fn resumir_emissoes(resposta: &Value) {
             .unwrap_or("-");
         println!("{quando}  {status:<18}  {chave}");
     }
+}
+
+fn tem_achado(resposta: &Value, codigo: &str) -> bool {
+    resposta
+        .get("findings")
+        .and_then(Value::as_array)
+        .map(|fs| {
+            fs.iter()
+                .any(|f| f.get("code").and_then(Value::as_str) == Some(codigo))
+        })
+        .unwrap_or(false)
 }
 
 /// Os achados são o produto mais útil do serviço: dizem exatamente qual regra
