@@ -18,6 +18,20 @@ veja [docs/07](docs/07-sandbox-to-go-live.md).
 (arquitetura, pré-requisitos, referência da API, layout DPS/NFS-e, eventos,
 assinatura, sandbox até go-live e o desenho em Java).
 
+## CLI
+
+Há uma CLI em Rust — binário único, sem runtime — que fala com o serviço:
+
+```bash
+nfse saude
+nfse emitir -a venda.json
+nfse danfse CHAVE -s danfse.pdf
+```
+
+Binários para Linux (estáticos, musl), macOS e Windows são publicados em cada
+release. Veja [`cli/`](cli) para instalação, todos os comandos e os códigos de
+saída, que distinguem "documento recusado" de "serviço fora do ar".
+
 ## Como executar
 Requer **JDK 25** e Maven.
 
@@ -253,6 +267,7 @@ memória não dependem de CPU.</sub>
 | [`docs/`](docs) | Documentação de integração (comece por aqui). |
 | [`src/`](src) | O serviço. Sem framework , veja `NfseApplication.main`. |
 | [`schemas/`](schemas) | XSDs oficiais da NFS-e. **v1.01 = 2026-02-09.** |
+| [`cli/`](cli) | CLI em Rust, distribuída como binário único. |
 | [`training/`](training) | Stub WireMock e carga usados no treino do cache AOT. |
 | [`scripts/`](scripts) | Utilitários de desenvolvimento. |
 | [`reference/`](reference) | Texto extraído dos manuais oficiais do contribuinte. |

@@ -10,3 +10,5 @@ reference/
 schemas/
 scripts/
 *.md
+# The CLI is a separate deliverable and is never part of the service image.
+cli/

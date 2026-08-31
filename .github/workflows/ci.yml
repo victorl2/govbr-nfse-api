@@ -232,3 +232,106 @@ jobs:
         run: |
           docker buildx imagetools inspect \
             ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
+
+  # ---------------------------------------------------------------- CLI (Rust)
+  cli-test:
+    name: CLI — testes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+      - run: cargo fmt --check
+        working-directory: cli
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: cli
+      - run: cargo test
+        working-directory: cli
+
+  # Each target builds on a NATIVE runner. The Linux builds are static musl, so
+  # the binary runs on any distribution — including a scratch container.
+  cli-build:
+    name: CLI — ${{ matrix.target }}
+    needs: [cli-test]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            musl: true
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+            musl: true
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+          key: ${{ matrix.target }}
+
+      - name: Install the musl linker
+        if: matrix.musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - run: cargo build --release --target ${{ matrix.target }}
+        working-directory: cli
+
+      - name: Name the artifact
+        shell: bash
+        run: |
+          src="cli/target/${{ matrix.target }}/release/nfse"
+          out="nfse-${{ matrix.target }}"
+          if [ -f "${src}.exe" ]; then src="${src}.exe"; out="${out}.exe"; fi
+          mkdir -p dist
+          cp "$src" "dist/$out"
+          echo "ARTIFACT=$out" >> "$GITHUB_ENV"
+
+      # Proves the binary actually runs on the machine that built it. A CLI that
+      # links against something missing fails here rather than in someone's hands.
+      - name: Smoke test
+        if: matrix.target != 'x86_64-apple-darwin'
+        shell: bash
+        run: ./dist/${{ env.ARTIFACT }} --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: dist/${{ env.ARTIFACT }}
+          if-no-files-found: error
+
+  cli-release:
+    name: CLI — anexar à release
+    needs: [cli-build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: nfse-*
+          merge-multiple: true
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
