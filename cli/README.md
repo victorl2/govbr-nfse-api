@@ -96,8 +96,13 @@ Pode haver quantos modelos você quiser — um por cliente, um por tipo de servi
 nfse config modelo salvar mensal -a venda.json --padrao
 nfse config modelo salvar avulso -a outra-venda.json
 nfse config modelo listar          # o marcado com * é o padrão
+nfse config modelo padrao mensal   # troca qual é o padrão
 nfse config modelo remover avulso
 ```
+
+Renomear um modelo editando o JSON à mão deixa `modeloPadrao` apontando para um
+nome que não existe mais. O `nfse config` denuncia isso em vez de esperar a hora
+da emissão para falhar.
 
 Qual modelo é usado, em ordem: `--arquivo`, `--modelo`/`-M`, e por fim o
 **modelo padrão**. A origem sai impressa antes de qualquer coisa acontecer, no

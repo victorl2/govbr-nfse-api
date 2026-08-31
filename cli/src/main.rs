@@ -284,6 +284,8 @@ enum AcaoModelo {
     Listar,
     /// Remove um modelo
     Remover { nome: String },
+    /// Define qual modelo é o padrão
+    Padrao { nome: String },
 }
 
 fn main() -> ExitCode {
@@ -986,8 +988,19 @@ fn executar_config(
                     };
                     println!("  {marca} {nome}: {}", ambiente.url);
                 }
-                let padrao = config.dados.modelo_padrao.as_deref().unwrap_or("-");
-                println!("modelo padrão: {padrao}");
+                // Um config editado à mão pode deixar o padrão apontando para um
+                // modelo que não existe mais. Mostrar o nome como se estivesse
+                // tudo bem faz o erro só aparecer na hora de emitir.
+                match config.dados.modelo_padrao.as_deref() {
+                    Some(nome) if !config.dados.modelos.contains_key(nome) => {
+                        println!("modelo padrão: {nome}  <-- NÃO EXISTE MAIS");
+                        println!(
+                            "  corrija com: nfse config modelo padrao <nome>, ou use -M a cada chamada"
+                        );
+                    }
+                    Some(nome) => println!("modelo padrão: {nome}"),
+                    None => println!("modelo padrão: -"),
+                }
                 if config.dados.modelos.is_empty() {
                     println!("modelos: nenhum");
                 } else {
@@ -1099,6 +1112,15 @@ fn executar_config(
                     };
                     println!("{marca} {nome}");
                 }
+                Ok(EXIT_OK)
+            }
+            AcaoModelo::Padrao { nome } => {
+                // Valida antes de gravar: apontar o padrão para um modelo
+                // inexistente é justamente o estado que queremos evitar.
+                config.modelo(nome)?;
+                config.dados.modelo_padrao = Some(nome.clone());
+                config.salvar()?;
+                println!("modelo padrão: {nome}");
                 Ok(EXIT_OK)
             }
             AcaoModelo::Remover { nome } => {
