@@ -27,6 +27,37 @@ pub const URL_PADRAO: &str = "http://localhost:8080";
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Ambiente {
     pub url: String,
+    /// Como subir o serviço deste ambiente, quando ele não estiver no ar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docker: Option<Docker>,
+}
+
+/// O suficiente para levantar o contêiner do serviço.
+///
+/// A senha do certificado NÃO fica aqui: o que se guarda é o **comando** que a
+/// devolve (o Keychain, um gerenciador de segredos, o que for). Assim o config
+/// continua sem segredo nenhum, e a senha só existe em memória no instante em
+/// que o contêiner sobe.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Docker {
+    pub imagem: String,
+    pub container: String,
+    pub porta: u16,
+    /// NFSE_PROFILE: `restrita` ou `producao`. É o que decide o tpAmb.
+    pub profile: String,
+    pub certificado: String,
+    pub dados: String,
+    /// Comando que imprime a senha do certificado na saída padrão.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub senha_comando: Option<String>,
+    #[serde(default = "memoria_padrao")]
+    pub memoria: String,
+}
+
+fn memoria_padrao() -> String {
+    // Medido: 192m é o menor limite que nunca pressiona o coletor.
+    "192m".to_string()
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -54,6 +85,7 @@ impl Default for Dados {
             "local".to_string(),
             Ambiente {
                 url: URL_PADRAO.to_string(),
+                docker: None,
             },
         );
         Dados {

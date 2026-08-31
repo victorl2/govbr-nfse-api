@@ -56,6 +56,36 @@ O endereço vem, em ordem: `--url`, `$NFSE_URL`, ambiente ativo do config.
 **Nenhum segredo entra neste arquivo**: o certificado e-CNPJ e sua senha vivem
 no serviço, nunca na máquina de quem chama a CLI.
 
+### Subir o serviço sozinho
+
+Cada ambiente pode saber como levantar o próprio contêiner. Configurado uma vez,
+qualquer comando que precise do serviço o sobe se ele não estiver no ar.
+
+```bash
+nfse config docker uat  --profile restrita --porta 8080 \
+  --certificado ~/.nfse/ecnpj.p12 --dados ~/.nfse/data \
+  --senha-comando 'security find-generic-password -a nfse -s nfse-cert -w'
+
+nfse config docker prod --profile producao --porta 8081 \
+  --certificado ~/.nfse/ecnpj.p12 --dados ~/.nfse/data \
+  --senha-comando 'security find-generic-password -a nfse -s nfse-cert -w'
+
+nfse --env uat up          # sobe agora
+nfse --env uat up --pull   # baixa a imagem antes
+nfse --env uat down        # para
+```
+
+UAT e produção diferem por uma única variável, o `NFSE_PROFILE`, que é quem
+decide o `tpAmb`. Montar essa linha de comando à mão toda vez é o tipo de coisa
+que um dia sai errada, e sair errada aqui significa emitir no ambiente trocado.
+
+**A senha do certificado não entra no config**: guarda-se o *comando* que a
+devolve, e ela só existe em memória no instante em que o contêiner sobe.
+
+> Com uma tag móvel como `:latest`, a imagem local envelhece calada e passa a
+> rodar código antigo — responde normalmente e só falha no campo que mudou. Use
+> `up --pull`, ou fixe uma tag de versão com `--imagem` para produção.
+
 ### Modelos: emitir mudando só valor e datas
 
 Guarde uma venda inteira uma vez; depois a emissão do mês muda o que varia.

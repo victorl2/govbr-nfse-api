@@ -7,8 +7,9 @@
 
 mod client;
 mod config;
+mod docker;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -85,6 +86,16 @@ enum Comando {
         #[arg(short = 'y', long)]
         sim: bool,
     },
+
+    /// Sobe o serviço do ambiente em contêiner, se ainda não estiver no ar
+    Up {
+        /// Baixa a imagem antes de subir. Com uma tag móvel como :latest, a
+        /// imagem local envelhece calada e passa a rodar código antigo.
+        #[arg(long)]
+        pull: bool,
+    },
+    /// Para o contêiner do serviço do ambiente
+    Down,
 
     /// Ambiente ativo e modelos de venda
     Config {
@@ -230,6 +241,32 @@ enum AcaoConfig {
         #[command(subcommand)]
         acao: AcaoModelo,
     },
+    /// Ensina a CLI a subir o serviço deste ambiente em contêiner
+    Docker {
+        /// Ambiente a configurar
+        nome: String,
+        /// NFSE_PROFILE do serviço: restrita ou producao
+        #[arg(long)]
+        profile: String,
+        /// Porta no host
+        #[arg(long)]
+        porta: u16,
+        /// Caminho do certificado e-CNPJ no host
+        #[arg(long)]
+        certificado: PathBuf,
+        /// Diretório dos registros de emissão no host
+        #[arg(long)]
+        dados: PathBuf,
+        /// Comando que imprime a senha do certificado (nunca a senha em si)
+        #[arg(long)]
+        senha_comando: Option<String>,
+        #[arg(long, default_value = "ghcr.io/victorl2/govbr-nfse-api:latest")]
+        imagem: String,
+        #[arg(long, default_value = "nfse")]
+        container_prefixo: String,
+        #[arg(long, default_value = "192m")]
+        memoria: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -291,9 +328,14 @@ fn main() -> ExitCode {
         },
         (None, None) => config.url_ativa().to_string(),
     };
+    // Qual ambiente foi escolhido, para saber que contêiner subir.
+    let escolhido = cli
+        .env
+        .clone()
+        .unwrap_or_else(|| config.dados.ambiente_ativo.clone());
     let client = Client::new(&url, Duration::from_secs(cli.timeout));
 
-    match executar(&cli, &client, &mut config) {
+    match executar(&cli, &client, &mut config, &escolhido, &url) {
         Ok(code) => ExitCode::from(code),
         Err(e) => {
             eprintln!("erro: {e}");
@@ -325,8 +367,40 @@ fn codigo_do_erro(e: &Error) -> u8 {
     }
 }
 
-fn executar(cli: &Cli, client: &Client, config: &mut Config) -> client::Result<u8> {
+fn executar(
+    cli: &Cli,
+    client: &Client,
+    config: &mut Config,
+    escolhido: &str,
+    url: &str,
+) -> client::Result<u8> {
+    // Se o comando precisa do serviço e ele não está no ar, sobe o contêiner
+    // daquele ambiente. Só faz sentido quando o ambiente sabe como se levantar.
+    if precisa_do_servico(&cli.comando) {
+        garantir_no_ar(config, escolhido, url)?;
+    }
     match &cli.comando {
+        Comando::Up { pull } => {
+            let d = docker_do_ambiente(config, escolhido)?;
+            if *pull {
+                docker::baixar(&d.imagem)?;
+            }
+            if docker::subir(d, &format!("{url}/health"))? {
+                println!("{} no ar em {url} (perfil {})", d.container, d.profile);
+            } else {
+                println!("{} já estava no ar em {url}", d.container);
+            }
+            Ok(EXIT_OK)
+        }
+        Comando::Down => {
+            let d = docker_do_ambiente(config, escolhido)?;
+            if docker::descer(&d.container)? {
+                println!("{} parado", d.container);
+            } else {
+                println!("{} não estava no ar", d.container);
+            }
+            Ok(EXIT_OK)
+        }
         Comando::Health => {
             let (status, corpo) = client.health()?;
             if cli.json {
@@ -550,6 +624,74 @@ fn executar(cli: &Cli, client: &Client, config: &mut Config) -> client::Result<u
             Ok(EXIT_OK)
         }
     }
+}
+
+// ----------------------------------------------------------------- contêiner
+
+/// Comandos que não falam com o serviço não devem levantar contêiner nenhum.
+///
+/// `Up` fica de fora de propósito: ele sobe o contêiner por conta própria, e
+/// deixar o auto-start rodar antes faria o `--pull` chegar tarde demais, com o
+/// contêiner já no ar a partir da imagem velha.
+fn precisa_do_servico(comando: &Comando) -> bool {
+    !matches!(
+        comando,
+        Comando::Config { .. } | Comando::Up { .. } | Comando::Down
+    )
+}
+
+fn docker_do_ambiente<'a>(config: &'a Config, nome: &str) -> client::Result<&'a config::Docker> {
+    config
+        .dados
+        .ambientes
+        .get(nome)
+        .and_then(|a| a.docker.as_ref())
+        .ok_or_else(|| {
+            Error::Local(format!(
+                "o ambiente '{nome}' não sabe subir o serviço. Configure com:\n  \
+                 nfse config docker {nome} --profile restrita --porta 8080 \\\n    \
+                 --certificado ~/.nfse/ecnpj.p12 --dados ~/.nfse/data"
+            ))
+        })
+}
+
+/// Sobe o contêiner do ambiente se o serviço não responder. Sem configuração de
+/// docker o comportamento é o de antes: a chamada segue e falha por si.
+fn garantir_no_ar(config: &Config, nome: &str, url: &str) -> client::Result<()> {
+    let Some(d) = config
+        .dados
+        .ambientes
+        .get(nome)
+        .and_then(|a| a.docker.as_ref())
+    else {
+        return Ok(());
+    };
+    if docker::em_execucao(&d.container) {
+        return Ok(());
+    }
+    docker::subir(d, &format!("{url}/health"))?;
+    Ok(())
+}
+
+/// O docker precisa de caminho absoluto no bind mount; `~/.nfse` relativo viraria
+/// um diretório vazio dentro do contêiner, e o serviço subiria sem certificado.
+fn caminho_absoluto(caminho: &Path) -> client::Result<String> {
+    let expandido = if let Ok(resto) = caminho.strip_prefix("~") {
+        match std::env::var("HOME") {
+            Ok(home) => PathBuf::from(home).join(resto),
+            Err(_) => caminho.to_path_buf(),
+        }
+    } else {
+        caminho.to_path_buf()
+    };
+    let absoluto = if expandido.is_absolute() {
+        expandido
+    } else {
+        std::env::current_dir()
+            .map_err(|e| Error::Local(e.to_string()))?
+            .join(expandido)
+    };
+    Ok(absoluto.to_string_lossy().to_string())
 }
 
 // ------------------------------------------------------------- confirmação
@@ -852,7 +994,14 @@ fn executar_config(
                 config
                     .dados
                     .ambientes
-                    .insert(nome.clone(), config::Ambiente { url: url.clone() });
+                    .entry(nome.clone())
+                    .and_modify(|a| a.url = url.clone())
+                    // Preserva a configuração de docker: trocar a URL não pode
+                    // apagar o que o ambiente sabe sobre como se levantar.
+                    .or_insert_with(|| config::Ambiente {
+                        url: url.clone(),
+                        docker: None,
+                    });
             } else if !config.dados.ambientes.contains_key(nome) {
                 // Ativar um ambiente sem endereço deixaria a CLI apontando para o
                 // padrão sem avisar, que é como se emite no lugar errado.
@@ -864,6 +1013,49 @@ fn executar_config(
             config.dados.ambiente_ativo = nome.clone();
             config.salvar()?;
             println!("ambiente ativo: {nome} ({})", config.url_ativa());
+            Ok(EXIT_OK)
+        }
+
+        Some(AcaoConfig::Docker {
+            nome,
+            profile,
+            porta,
+            certificado,
+            dados,
+            senha_comando,
+            imagem,
+            container_prefixo,
+            memoria,
+        }) => {
+            if profile != "restrita" && profile != "producao" && profile != "local" {
+                return Err(Error::Local(format!(
+                    "profile '{profile}' não existe; use local, restrita ou producao"
+                )));
+            }
+            let d = config::Docker {
+                imagem: imagem.clone(),
+                container: format!("{container_prefixo}-{nome}"),
+                porta: *porta,
+                profile: profile.clone(),
+                certificado: caminho_absoluto(certificado)?,
+                dados: caminho_absoluto(dados)?,
+                senha_comando: senha_comando.clone(),
+                memoria: memoria.clone(),
+            };
+            let url = format!("http://localhost:{porta}");
+            let ambiente = config
+                .dados
+                .ambientes
+                .entry(nome.clone())
+                .or_insert_with(|| config::Ambiente {
+                    url: url.clone(),
+                    docker: None,
+                });
+            ambiente.url = url.clone();
+            ambiente.docker = Some(d.clone());
+            config.salvar()?;
+            println!("{nome}: {} ({}) em {url}", d.container, d.profile);
+            println!("  nfse --env {nome} up      # sobe agora");
             Ok(EXIT_OK)
         }
 

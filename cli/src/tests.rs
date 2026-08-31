@@ -277,6 +277,7 @@ fn ambiente_e_modelo_sobrevivem_a_releitura() {
             "restrita".into(),
             config::Ambiente {
                 url: "https://nfse.interno:8443".into(),
+                docker: None,
             },
         );
         config.dados.ambiente_ativo = "restrita".into();
@@ -424,4 +425,78 @@ fn o_config_nasce_fechado() {
     assert_eq!(pasta, 0o700, "pasta deveria ser 0700, é {pasta:o}");
     drop(config);
     let _ = std::fs::remove_dir_all(caminho.parent().unwrap().parent().unwrap());
+}
+
+// ---------------------------------------------------------------- contêiner
+
+fn docker_exemplo(profile: &str, porta: u16) -> config::Docker {
+    config::Docker {
+        imagem: "ghcr.io/victorl2/govbr-nfse-api:latest".into(),
+        container: format!("nfse-{profile}"),
+        porta,
+        profile: profile.into(),
+        certificado: "/Users/victor/.nfse/ecnpj.p12".into(),
+        dados: "/Users/victor/.nfse/data".into(),
+        senha_comando: None,
+        memoria: "192m".into(),
+    }
+}
+
+#[test]
+fn o_profile_e_a_porta_chegam_ao_conteiner() {
+    // É o NFSE_PROFILE que decide o tpAmb. Trocá-lo aqui é emitir no ambiente
+    // errado, então vale prender exatamente o que vai na linha de comando.
+    let args = docker::argumentos(&docker_exemplo("producao", 8081), None);
+    let linha = args.join(" ");
+    assert!(linha.contains("NFSE_PROFILE=producao"), "{linha}");
+    assert!(linha.contains("8081:8080"), "{linha}");
+    assert!(linha.contains("--detach"), "{linha}");
+    assert!(
+        linha.contains("/Users/victor/.nfse/data:/var/lib/nfse"),
+        "{linha}"
+    );
+    // O certificado entra somente-leitura.
+    assert!(linha.contains("ecnpj.p12:ro"), "{linha}");
+}
+
+#[test]
+fn uat_e_producao_nao_se_confundem() {
+    let uat = docker::argumentos(&docker_exemplo("restrita", 8080), None).join(" ");
+    let prod = docker::argumentos(&docker_exemplo("producao", 8081), None).join(" ");
+    assert!(uat.contains("NFSE_PROFILE=restrita") && !uat.contains("producao"));
+    assert!(prod.contains("NFSE_PROFILE=producao") && !prod.contains("restrita"));
+    // Nomes de contêiner distintos, senão um substitui o outro.
+    assert!(uat.contains("nfse-restrita") && prod.contains("nfse-producao"));
+}
+
+#[test]
+fn a_senha_so_entra_quando_existe() {
+    let sem = docker::argumentos(&docker_exemplo("restrita", 8080), None).join(" ");
+    assert!(
+        !sem.contains("NFSE_CERT_PASSWORD"),
+        "senha vazia não deve virar env"
+    );
+
+    let com = docker::argumentos(&docker_exemplo("restrita", 8080), Some("segredo")).join(" ");
+    assert!(com.contains("NFSE_CERT_PASSWORD=segredo"));
+}
+
+#[test]
+fn a_senha_nunca_e_gravada_no_config() {
+    // O config guarda o COMANDO que devolve a senha, nunca a senha.
+    let mut d = docker_exemplo("producao", 8081);
+    d.senha_comando = Some("security find-generic-password -a nfse -s nfse-cert -w".into());
+    let json = serde_json::to_value(&d).expect("serializar");
+    let campos = json.as_object().expect("objeto");
+    // Existe o campo do comando...
+    assert!(campos.contains_key("senhaComando"));
+    // ...e não existe campo nenhum onde a senha em si pudesse ser guardada.
+    // (o comando do Keychain contém a palavra "password", então procurar pela
+    // palavra no texto não provaria nada — o que importa é o formato.)
+    for proibido in ["senha", "password", "certPassword", "certificadoSenha"] {
+        assert!(
+            !campos.contains_key(proibido),
+            "config não pode ter '{proibido}'"
+        );
+    }
 }
