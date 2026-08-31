@@ -203,7 +203,7 @@ struct EntradaVenda {
     /// Arquivo JSON descrevendo a venda
     #[arg(short, long, conflicts_with = "modelo")]
     arquivo: Option<PathBuf>,
-    /// Modelo salvo no config
+    /// Modelo salvo no config. Sem isto e sem --arquivo, vale o modelo padrão
     #[arg(short = 'M', long)]
     modelo: Option<String>,
     /// Substitui values.vServ (valor em reais)
@@ -426,7 +426,11 @@ fn executar(
         }
 
         Comando::Validar { venda } => {
-            let resposta = client.validate(montar_venda(venda, config)?)?;
+            let (documento, origem) = montar_venda(venda, config)?;
+            if !cli.json {
+                println!("origem: {origem}");
+            }
+            let resposta = client.validate(documento)?;
             if cli.json {
                 imprimir_json(&resposta);
             } else {
@@ -462,8 +466,8 @@ fn executar(
             salvar_xml,
             sim,
         } => {
-            let documento = montar_venda(venda, config)?;
-            if !confirmar_emissao(client, &documento, *sim)? {
+            let (documento, origem) = montar_venda(venda, config)?;
+            if !confirmar_emissao(client, &documento, &origem, *sim)? {
                 println!("cancelado, nada foi transmitido");
                 return Ok(EXIT_OK);
             }
@@ -733,7 +737,12 @@ fn campo(v: &Value, caminho: &[&str]) -> String {
 
 /// Mostra o que será emitido e pede confirmação. `tpAmb=1` é nota com validade
 /// legal, e o aviso muda de tom por isso.
-fn confirmar_emissao(client: &Client, documento: &Value, sim: bool) -> client::Result<bool> {
+fn confirmar_emissao(
+    client: &Client,
+    documento: &Value,
+    origem: &str,
+    sim: bool,
+) -> client::Result<bool> {
     let (ambiente, tp_amb, sefin) = ambiente_do_servico(client);
     let producao = tp_amb == 1;
 
@@ -744,6 +753,7 @@ fn confirmar_emissao(client: &Client, documento: &Value, sim: bool) -> client::R
         println!("  {ambiente} (tpAmb={tp_amb}) — nota SEM valor legal");
     }
     println!("  sefin: {sefin}");
+    println!("  origem: {origem}");
     println!("-----------------------------------------------------");
     println!("  emitente    {}", campo(documento, &["emitter", "cnpj"]));
     println!(
@@ -1109,12 +1119,17 @@ fn executar_config(
 /// Resolve a venda: arquivo, modelo indicado ou modelo padrão, com as
 /// substituições por cima. É o que faz a emissão do dia a dia ser só
 /// `nfse emitir --valor 1500.00`.
-fn montar_venda(entrada: &EntradaVenda, config: &Config) -> client::Result<Value> {
-    let mut venda = match (&entrada.arquivo, &entrada.modelo) {
-        (Some(caminho), _) => ler_json(caminho)?,
-        (None, Some(nome)) => config.modelo(nome)?,
+fn montar_venda(entrada: &EntradaVenda, config: &Config) -> client::Result<(Value, String)> {
+    // A origem viaja junto com a venda: com vários modelos salvos, saber QUAL
+    // deles foi usado é a diferença entre conferir e torcer.
+    let (mut venda, origem) = match (&entrada.arquivo, &entrada.modelo) {
+        (Some(caminho), _) => (ler_json(caminho)?, format!("arquivo {}", caminho.display())),
+        (None, Some(nome)) => (config.modelo(nome)?, format!("modelo '{nome}'")),
         (None, None) => match config.dados.modelo_padrao.as_deref() {
-            Some(nome) => config.modelo(nome)?,
+            Some(nome) => (
+                config.modelo(nome)?,
+                format!("modelo '{nome}' (padrão do config)"),
+            ),
             None => {
                 return Err(Error::Local(
                     "informe --arquivo, --modelo, ou salve um modelo padrão com \
@@ -1163,7 +1178,7 @@ fn montar_venda(entrada: &EntradaVenda, config: &Config) -> client::Result<Value
             Value::String(descricao.clone()),
         );
     }
-    Ok(venda)
+    Ok((venda, origem))
 }
 
 // --------------------------------------------------------------- apresentação

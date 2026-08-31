@@ -90,14 +90,28 @@ devolve, e ela só existe em memória no instante em que o contêiner sobe.
 
 Guarde uma venda inteira uma vez; depois a emissão do mês muda o que varia.
 
+Pode haver quantos modelos você quiser — um por cliente, um por tipo de serviço.
+
 ```bash
 nfse config modelo salvar mensal -a venda.json --padrao
-nfse config modelo listar
-nfse config modelo remover mensal
-
-nfse emitir --valor 2500.00 --competencia 2026-08-31
-nfse emitir -M mensal --valor 2500.00 --descricao "Consultoria, agosto"
+nfse config modelo salvar avulso -a outra-venda.json
+nfse config modelo listar          # o marcado com * é o padrão
+nfse config modelo remover avulso
 ```
+
+Qual modelo é usado, em ordem: `--arquivo`, `--modelo`/`-M`, e por fim o
+**modelo padrão**. A origem sai impressa antes de qualquer coisa acontecer, no
+`validar` e no cabeçalho da confirmação do `emitir`:
+
+```bash
+nfse emitir -M mensal --valor 2500.00        # origem: modelo 'mensal'
+nfse emitir --valor 2500.00                  # origem: modelo 'mensal' (padrão do config)
+nfse emitir -a /tmp/nota.json --valor 2500.00  # origem: arquivo /tmp/nota.json
+```
+
+Com mais de um modelo salvo, saber **qual** foi usado é a diferença entre
+conferir e torcer, então isso aparece junto com o ambiente fiscal na hora de
+confirmar.
 
 Substituições disponíveis em `emitir` e `validar`: `--valor` (`values.vServ`,
 em reais), `--valor-moeda` (`comercioExterior.vServMoeda`, na moeda
