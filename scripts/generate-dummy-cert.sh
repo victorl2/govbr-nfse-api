@@ -14,6 +14,11 @@ PASS="${NFSE_CERT_PASSWORD:-changeit}"
 
 mkdir -p "$(dirname "$OUT")"
 
+# Idempotent: keytool refuses to add an alias that already exists, so a second
+# run would fail. Replace it instead — this is a throwaway dev keypair, and a
+# stale one is a hazard of its own (an expired dummy makes /health report DOWN).
+rm -f "$OUT"
+
 keytool -genkeypair \
   -alias nfse-dummy \
   -keyalg RSA -keysize 2048 \
