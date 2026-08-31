@@ -1,0 +1,12 @@
+target/
+certs/
+*.p12
+*.pfx
+.git/
+.idea/
+.playwright-mcp/
+docs/
+reference/
+schemas/
+scripts/
+*.md

@@ -1,0 +1,5 @@
+{
+  "priority": 2,
+  "request": { "method": "ANY", "urlPathPattern": "/SefinNacional/dps/.*" },
+  "response": { "status": 404, "headers": { "Content-Type": "application/json" }, "jsonBody": {} }
+}

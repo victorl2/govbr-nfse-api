@@ -1,0 +1,9 @@
+{
+  "priority": 3,
+  "request": { "method": "GET", "urlPathPattern": "/SefinNacional/nfse/[^/]+" },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "nfseXmlGZipB64": "@@NFSE_GZIP_B64@@" }
+  }
+}

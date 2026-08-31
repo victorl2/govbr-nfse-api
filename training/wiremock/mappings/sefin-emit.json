@@ -1,0 +1,12 @@
+{
+  "request": { "method": "POST", "urlPath": "/SefinNacional/nfse" },
+  "response": {
+    "status": 201,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "chaveAcesso": "33045572212345678000195000000000000126081270635662",
+      "nfseXmlGZipB64": "@@NFSE_GZIP_B64@@",
+      "alertas": []
+    }
+  }
+}

@@ -1,0 +1,53 @@
+# --- Secrets: NEVER commit certificates or credentials ---
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+*.jks
+*.keystore
+# ...but the vendored public CA root IS a required runtime resource (it ends up
+# inside the jar, and mTLS to gov.br fails without it). It is a public
+# certificate, not a secret.
+!src/main/resources/truststore/*.pem
+.env
+.env.*
+secrets/
+# Note: src/main/resources/application-local.yml is a committed, secret-free
+# profile (dummy cert, localhost). Only ad-hoc secret overrides are ignored:
+**/application-secret.*
+
+# --- Java / build ---
+target/
+build/
+*.class
+*.jar
+!**/gradle/wrapper/gradle-wrapper.jar
+.gradle/
+out/
+bin/
+
+# --- IDE ---
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Logs / tmp ---
+*.log
+tmp/
+
+# Playwright MCP working dir (may hold session material)
+.playwright-mcp/
+
+# Emission records and numbering counters (NFSE_DATA_DIR).
+# These hold the real CNPJ, taker details and signed fiscal documents —
+# never in the repo. In the container this lives at /var/lib/nfse.
+data/

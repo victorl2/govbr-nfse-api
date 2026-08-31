@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>br.com.nfse</groupId>
+    <artifactId>nfse</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>nfse</name>
+    <description>In-house NFS-e emitter for the Brazilian Sistema Nacional NFS-e</description>
+
+    <properties>
+        <java.version>25</java.version>
+        <!-- Layout version of the vendored XSDs under src/main/resources/schemas -->
+        <nfse.schema.version>1.01</nfse.schema.version>
+    </properties>
+
+    <!--
+      The Spring Boot parent is kept for its dependency BOM only: it pins
+      consistent versions of Jackson, Spring, SLF4J and JUnit. Boot itself,
+      Tomcat, autoconfigure, hibernate-validator and actuator are NOT
+      dependencies — the service runs on the JDK's own HTTP server and wires
+      its objects by hand, which removes ~2,700 classes from startup.
+    -->
+    <dependencies>
+        <!--
+          spring-web is kept for RestClient alone: SefinClient's transport is the
+          one piece whose live behaviour (gzip envelopes, PascalCase errors, the
+          double-encoded arquivoXml) was proven against SEFIN, so it stays exactly
+          as it was verified. spring-core comes along as its only transitive.
+        -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+        </dependency>
+
+        <!-- JSON in and out of the HTTP layer, plus java.time support. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <!-- Logging: SLF4J API + Logback, configured by src/main/resources/logback.xml. -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+
+        <!--
+          JAXB is NOT a runtime dependency: the DPS/NFS-e documents are built and
+          read with DOM directly, which is what is verified against SEFIN. The
+          binding stack lives in the `jaxb` profile below, for the day someone
+          generates model classes from the XSDs. Keeping it out of the default
+          build removes ~1.5 MB from the image and ~200 classes from startup.
+        -->
+
+        <!-- XMLDSig (javax.xml.crypto) and XSD validation are part of the JDK; no extra deps. -->
+
+        <!-- DANFSe: the official generation API was suspended on 2026-08-03 (NT-008) —
+             emitter software must render the PDF itself from the NFS-e XML. -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- MockRestServiceServer, to keep the proven SefinClient tests unchanged. -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Matchers and JsonPath that spring-test's request expectations use. -->
+        <dependency>
+            <groupId>org.hamcrest</groupId>
+            <artifactId>hamcrest</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.jayway.jsonpath</groupId>
+            <artifactId>json-path</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>nfse</finalName>
+        <plugins>
+            <!-- A plain executable jar: Main-Class plus a Class-Path pointing at lib/. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>br.com.nfse.NfseApplication</mainClass>
+                            <addClasspath>true</addClasspath>
+                            <classpathPrefix>lib/</classpathPrefix>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+            <!-- Dependencies next to it, so the image can layer them separately. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>package</phase>
+                        <goals><goal>copy-dependencies</goal></goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                            <includeScope>runtime</includeScope>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!--
+          Opt-in JAXB model generation from the official XSDs.
+          Run:  mvn -Pjaxb generate-sources
+          Kept out of the default build so the Phase-B skeleton compiles without
+          fighting xjc on the full schema set. See docs/08 build order step 2.
+        -->
+        <profile>
+            <id>jaxb</id>
+            <dependencies>
+                <dependency>
+                    <groupId>jakarta.xml.bind</groupId>
+                    <artifactId>jakarta.xml.bind-api</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>org.glassfish.jaxb</groupId>
+                    <artifactId>jaxb-runtime</artifactId>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>jaxb2-maven-plugin</artifactId>
+                        <version>3.2.0</version>
+                        <executions>
+                            <execution>
+                                <id>generate-dps-nfse</id>
+                                <goals><goal>xjc</goal></goals>
+                                <configuration>
+                                    <sources>
+                                        <source>src/main/resources/schemas/1.01</source>
+                                    </sources>
+                                    <packageName>br.com.nfse.layout</packageName>
+                                    <clearOutputDir>false</clearOutputDir>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

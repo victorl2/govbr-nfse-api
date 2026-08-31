@@ -1,0 +1,4 @@
+{
+  "request": { "method": "GET", "urlPath": "/SefinNacional/ParametrosMunicipais" },
+  "response": { "status": 501, "headers": { "Content-Type": "application/json" }, "jsonBody": {} }
+}

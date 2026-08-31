@@ -1,0 +1,49 @@
+{
+  "emitter": {
+    "cnpj": "12345678000195",
+    "municipality": "3304557",
+    "opSimpNac": "3",
+    "regApTribSN": "1",
+    "regEspTrib": "0"
+  },
+  "dps": { "serie": "70000" },
+  "service": {
+    "cTribNac": "010401",
+    "cTribMun": "003",
+    "description": "Desenvolvimento de software sob encomenda para cliente no exterior (exportacao de servico)",
+    "nbs": "115022000",
+    "locPrestacao": "3304557",
+    "infoCompl": {
+      "xInfComp": "Contrato de prestacao de servicos 2026/001 - parcela unica.",
+      "xPed": "PO-2026-0001",
+      "itensPedido": ["1", "2"]
+    }
+  },
+  "values": {
+    "vServ": "10000.00",
+    "tribISSQN": "3",
+    "cPaisResult": "US",
+    "tpRetISSQN": "1",
+    "pTotTribSN": "6.00",
+    "descontos": { "incondicionado": "100.00" },
+    "tributacaoFederal": {
+      "pisCofins": {
+        "cst": "01", "vBc": "10000.00", "aliqPis": "0.65", "aliqCofins": "3.00",
+        "vPis": "65.00", "vCofins": "300.00", "tpRet": "0"
+      },
+      "vRetIRRF": "150.00"
+    }
+  },
+  "tomador": {
+    "cNaoNif": "1",
+    "nome": "ACME SOFTWARE CLIENT LLC",
+    "enderecoExterior": {
+      "pais": "US", "cep": "10001", "cidade": "New York",
+      "estadoProvinciaRegiao": "NY", "logradouro": "100 Main Street",
+      "numero": "100", "bairro": "Downtown"
+    }
+  },
+  "comercioExterior": {
+    "mdPrestacao": "1", "vincPrest": "0", "tpMoeda": "220", "vServMoeda": "2000.00"
+  }
+}

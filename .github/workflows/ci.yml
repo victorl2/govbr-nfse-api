@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    name: Tests (JDK 25)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+
+      # The dummy cert is generated, never committed: the signing pipeline is
+      # exercised end-to-end without any real e-CNPJ being available to CI.
+      - name: Generate the dummy certificate
+        run: ./scripts/generate-dummy-cert.sh
+
+      # UTC deliberately: every fiscal timestamp must come from BrasiliaTime
+      # rather than the host zone, and running the suite outside America/Sao_Paulo
+      # is what proves it.
+      - name: Run tests
+        run: mvn -B test
+        env:
+          TZ: UTC
+
+      - name: Verify the jar is runnable
+        run: |
+          mvn -B -DskipTests package
+          NFSE_PROFILE=local NFSE_CERT_PATH=certs/dummy.p12 NFSE_PORT=8099 \
+            java -jar target/nfse.jar &
+          for i in $(seq 1 100); do
+            curl -sf http://localhost:8099/health && break
+            sleep 0.2
+          done
+          curl -sf http://localhost:8099/health | grep -q '"status":"UP"'
+
+  image:
+    name: Container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # The build needs BuildKit for the Maven cache mount. Nothing is pushed;
+      # this only proves the three-stage build and the jlink module list still
+      # produce a working runtime.
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: nfse:ci
+
+      # jdk.crypto.ec and jdk.localedata are invisible to jdeps and fail
+      # silently when dropped from the jlink module list — the first breaks the
+      # mTLS handshake, the second turns "R$ 10.000,00" into "R$ 10,000.00".
+      # Assert both are present rather than discovering it in production.
+      - name: Assert the fragile jlink modules survived
+        run: |
+          docker run --rm --entrypoint java nfse:ci --list-modules > modules.txt
+          grep -q '^jdk.crypto.ec' modules.txt
+          grep -q '^jdk.localedata' modules.txt
+          docker run --rm --entrypoint java nfse:ci \
+            -Duser.language=pt -Duser.country=BR -version 2>&1 | head -1
+
+      # The AOT cache is what makes startup ~265 ms instead of ~680 ms, and
+      # AOTMode=auto means a cache that fails to map degrades silently to a slow
+      # start. Assert it is present AND actually mapped, or the regression is
+      # invisible.
+      - name: Assert the AOT cache is present and maps
+        run: |
+          docker run --rm --entrypoint sh nfse:ci -c 'test -s /app/app.aot'
+          docker run --rm --entrypoint java nfse:ci -Xlog:aot=info -version 2>&1 \
+            | tee aot.log
+          grep -q 'Opened AOT cache' aot.log
+          ! grep -qiE 'aot.*(failed|mismatch|disabling)' aot.log
+
+      - name: Boot the container and check health
+        run: |
+          ./scripts/generate-dummy-cert.sh
+          docker run -d --name nfse-ci -m 192m -p 8080:8080 \
+            -v "$PWD/certs/dummy.p12:/secure/dummy.p12:ro" \
+            -e NFSE_PROFILE=local \
+            -e NFSE_CERT_PATH=/secure/dummy.p12 \
+            -e NFSE_CERT_PASSWORD=changeit \
+            nfse:ci
+          for i in $(seq 1 100); do
+            curl -sf http://localhost:8080/health && break
+            sleep 0.3
+          done
+          curl -sf http://localhost:8080/health | grep -q '"status":"UP"'
+          # The DANFSe renders correctly only if the pt-BR locale really shipped.
+          curl -sf -X POST http://localhost:8080/nfse/danfse \
+            -H 'Content-Type: application/xml' \
+            --data-binary @src/test/resources/dps/nfse-export-sample.xml \
+            -o danfse.pdf
+          head -c 4 danfse.pdf | grep -q '%PDF'
+          docker logs nfse-ci

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evento xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.00">
+  <infEvento Id="EVT330455722123456780001950000000000001260812706356621010101">
+    <chNFSe>33045572212345678000195000000000000126081270635662</chNFSe>
+    <nPedRegEvento>1</nPedRegEvento>
+    <dhProc>2026-08-28T14:40:00-03:00</dhProc>
+    <nSeqEvento>1</nSeqEvento>
+    <tpEvento>101101</tpEvento>
+    <verAplic>TREINO_AOT</verAplic>
+    <cStat>135</cStat>
+    <xMotivo>Evento registrado e vinculado a NFS-e</xMotivo>
+  </infEvento>
+</evento>

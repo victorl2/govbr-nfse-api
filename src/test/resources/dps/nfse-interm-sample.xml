@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<NFSe versao="1.01" xmlns="http://www.sped.fazenda.gov.br/nfse">
+  <infNFSe Id="NFS33045572212345678000195000000000000126081270635662">
+    <xLocEmi>Rio de Janeiro</xLocEmi>
+    <xLocPrestacao>Rio de Janeiro</xLocPrestacao>
+    <nNFSe>1</nNFSe>
+    <xTribNac>Elaboração de programas de computadores, inclusive de jogos eletrônicos, independentemente da arquitetura construtiva da máquina em que o programa será executado, incluindo tablets, smartphones e congêneres.</xTribNac>
+    <xNBS>Serviços de projeto e desenvolvimento, adaptação e instalação de aplicativos personalizados (customizados)</xNBS>
+    <verAplic>nfse-svc-0.1</verAplic>
+    <ambGer>2</ambGer>
+    <tpEmis>1</tpEmis>
+    <procEmi>2</procEmi>
+    <cStat>100</cStat>
+    <dhProc>2026-08-28T14:37:06-03:00</dhProc>
+    <nDFSe>568444</nDFSe>
+    <emit>
+      <CNPJ>12345678000195</CNPJ>
+      <xNome>EMPRESA DE EXEMPLO LTDA</xNome>
+      <enderNac>
+        <xLgr>RUA DE EXEMPLO</xLgr>
+        <nro>00100</nro>
+        <xBairro>CENTRO</xBairro>
+        <cMun>3304557</cMun>
+        <UF>RJ</UF>
+        <CEP>20000000</CEP>
+      </enderNac>
+      <fone>2133334444</fone>
+      <email>REGISTRO@EXEMPLO.COM.BR</email>
+    </emit>
+    <valores>
+      <vLiq>10000.00</vLiq>
+    </valores>
+    <DPS versao="1.01">
+      <infDPS Id="DPS330455721234567800019570000000000000000001">
+        <tpAmb>2</tpAmb>
+        <dhEmi>2026-08-28T14:37:06-03:00</dhEmi>
+        <verAplic>nfse-svc-0.1</verAplic>
+        <serie>70000</serie>
+        <nDPS>1</nDPS>
+        <dCompet>2026-08-28</dCompet>
+        <tpEmit>1</tpEmit>
+        <cLocEmi>3304557</cLocEmi>
+        <prest>
+          <CNPJ>12345678000195</CNPJ>
+          <fone>21988887777</fone>
+          <email>contato@exemplo.com.br</email>
+          <regTrib>
+            <opSimpNac>3</opSimpNac>
+            <regApTribSN>1</regApTribSN>
+            <regEspTrib>0</regEspTrib>
+          </regTrib>
+        </prest>
+        <toma>
+          <cNaoNIF>1</cNaoNIF>
+          <xNome>ACME SOFTWARE CLIENT LLC</xNome>
+          <end>
+            <endExt>
+              <cPais>US</cPais>
+              <cEndPost>10001</cEndPost>
+              <xCidade>New York</xCidade>
+              <xEstProvReg>NY</xEstProvReg>
+            </endExt>
+            <xLgr>100 Main Street</xLgr>
+            <nro>100</nro>
+            <xBairro>Downtown</xBairro>
+          </end>
+        </toma><interm><CNPJ>11222333000181</CNPJ><xNome>AGENCIA INTERMEDIA LTDA</xNome></interm>
+        <serv>
+          <locPrest>
+            <cLocPrestacao>3304557</cLocPrestacao>
+          </locPrest>
+          <cServ>
+            <cTribNac>010401</cTribNac>
+            <cTribMun>003</cTribMun>
+            <xDescServ>Desenvolvimento de software sob encomenda para cliente no exterior (exportação de serviço)</xDescServ>
+            <cNBS>115022000</cNBS>
+          </cServ>
+          <comExt>
+            <mdPrestacao>1</mdPrestacao>
+            <vincPrest>0</vincPrest>
+            <tpMoeda>220</tpMoeda>
+            <vServMoeda>2000.00</vServMoeda>
+            <mecAFComexP>01</mecAFComexP>
+            <mecAFComexT>01</mecAFComexT>
+            <movTempBens>1</movTempBens>
+            <mdic>0</mdic>
+          </comExt>
+        </serv>
+        <valores>
+          <vServPrest>
+            <vServ>10000.00</vServ>
+          </vServPrest>
+          <trib>
+            <tribMun>
+              <tribISSQN>3</tribISSQN>
+              <cPaisResult>US</cPaisResult>
+              <tpRetISSQN>1</tpRetISSQN>
+            </tribMun>
+            <totTrib>
+              <pTotTribSN>6.00</pTotTribSN>
+            </totTrib>
+          </trib>
+        </valores>
+      </infDPS>
+    </DPS>
+  </infNFSe>
+</NFSe>
