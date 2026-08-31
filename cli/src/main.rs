@@ -7,6 +7,7 @@
 
 mod client;
 mod config;
+mod datas;
 mod docker;
 
 use std::path::{Path, PathBuf};
@@ -212,10 +213,10 @@ struct EntradaVenda {
     /// Substitui comercioExterior.vServMoeda (valor na moeda estrangeira)
     #[arg(long)]
     valor_moeda: Option<String>,
-    /// Substitui dps.dCompet (AAAA-MM-DD)
+    /// Substitui dps.dCompet. Aceita 31/08/2026 ou 2026-08-31
     #[arg(long)]
     competencia: Option<String>,
-    /// Substitui dps.dhEmi
+    /// Substitui dps.dhEmi. Aceita 31/08/2026, 31/08/2026 14:30 ou ISO
     #[arg(long)]
     emissao: Option<String>,
     /// Substitui service.description
@@ -783,7 +784,10 @@ fn confirmar_emissao(
             numero
         }
     );
-    println!("  competência {}", campo(documento, &["dps", "dCompet"]));
+    println!(
+        "  competência {}",
+        datas::para_br(&campo(documento, &["dps", "dCompet"]))
+    );
     println!(
         "  valor       R$ {}   |   {} (moeda {})",
         campo(documento, &["values", "vServ"]),
@@ -914,9 +918,11 @@ fn distribuicao(
                     doc.get("chaveAcesso")
                         .and_then(Value::as_str)
                         .unwrap_or("-"),
-                    doc.get("dataHoraGeracao")
-                        .and_then(Value::as_str)
-                        .unwrap_or("-")
+                    datas::para_br(
+                        doc.get("dataHoraGeracao")
+                            .and_then(Value::as_str)
+                            .unwrap_or("-")
+                    )
                 );
             }
         }
@@ -1176,18 +1182,20 @@ fn montar_venda(entrada: &EntradaVenda, config: &Config) -> client::Result<(Valu
             Value::String(valor.clone()),
         );
     }
+    // A entrada vem no formato de quem digita; o layout exige ISO. Converter
+    // aqui, e falhar aqui, evita mandar uma competência errada para a SEFIN.
     if let Some(competencia) = &entrada.competencia {
         config::definir(
             &mut venda,
             &["dps", "dCompet"],
-            Value::String(competencia.clone()),
+            Value::String(datas::data_para_iso(competencia)?),
         );
     }
     if let Some(emissao) = &entrada.emissao {
         config::definir(
             &mut venda,
             &["dps", "dhEmi"],
-            Value::String(emissao.clone()),
+            Value::String(datas::datahora_para_iso(emissao)?),
         );
     }
     if let Some(serie) = &entrada.serie {
@@ -1231,8 +1239,11 @@ fn resumir_health(corpo: &Value) {
         let dias = cert.get("daysToExpiry").and_then(Value::as_i64);
         let ate = cert.get("notAfter").and_then(Value::as_str).unwrap_or("?");
         match dias {
-            Some(d) => println!("certificado: vence em {d} dia(s), em {ate}"),
-            None => println!("certificado: {ate}"),
+            Some(d) => println!(
+                "certificado: vence em {d} dia(s), em {}",
+                datas::para_br(ate)
+            ),
+            None => println!("certificado: {}", datas::para_br(ate)),
         }
     }
     if let Some(avisos) = corpo.get("warnings").and_then(Value::as_array) {
@@ -1290,7 +1301,7 @@ fn resumir_emissoes(resposta: &Value) {
         return;
     }
     for item in itens {
-        let quando = item.get("createdAt").and_then(Value::as_str).unwrap_or("");
+        let quando = datas::para_br(item.get("createdAt").and_then(Value::as_str).unwrap_or(""));
         let status = item.get("status").and_then(Value::as_str).unwrap_or("?");
         let chave = item
             .get("chaveAcesso")

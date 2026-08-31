@@ -124,6 +124,21 @@ estrangeira), `--competencia` (`dps.dCompet`), `--emissao` (`dps.dhEmi`),
 `--serie` (`dps.serie`) e `--descricao` (`service.description`). O resto do
 modelo segue intacto. Sem `-a` e sem `-M`, vale o modelo padrão.
 
+### Datas
+
+As datas entram no formato brasileiro e são convertidas para o ISO que o layout
+exige. O formato ISO continua aceito, porque é o que os modelos guardam.
+
+```bash
+nfse emitir --competencia 31/08/2026          # vira dCompet 2026-08-31
+nfse emitir --competencia 2026-08-31          # também vale
+nfse emitir --emissao "31/08/2026 14:30"      # vira 2026-08-31T14:30:00-03:00
+```
+
+Nada é adivinhado: `03/04/2026` é 3 de abril, e uma data que não faz sentido
+(`31/13/2026`, `2026/08/31`) falha **na sua máquina**, antes de virar uma
+competência errada numa nota fiscal. Na exibição tudo volta em dd/mm/aaaa.
+
 Numa nota de exportação o valor aparece nos dois lugares, então troque os dois:
 
 ```bash

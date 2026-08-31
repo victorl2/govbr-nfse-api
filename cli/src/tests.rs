@@ -500,3 +500,87 @@ fn a_senha_nunca_e_gravada_no_config() {
         );
     }
 }
+
+// -------------------------------------------------------------------- datas
+
+#[test]
+fn competencia_aceita_o_formato_brasileiro() {
+    assert_eq!(datas::data_para_iso("31/08/2026").unwrap(), "2026-08-31");
+    assert_eq!(datas::data_para_iso("07/08/2026").unwrap(), "2026-08-07");
+    // Dia e mês com um dígito só continuam valendo.
+    assert_eq!(datas::data_para_iso("7/8/2026").unwrap(), "2026-08-07");
+}
+
+#[test]
+fn competencia_em_iso_continua_valendo() {
+    // Os modelos guardam ISO; aceitar só o formato novo quebraria todos eles.
+    assert_eq!(datas::data_para_iso("2026-08-31").unwrap(), "2026-08-31");
+}
+
+#[test]
+fn data_sem_sentido_e_recusada_antes_de_sair() {
+    for ruim in [
+        "31-08-2026",
+        "2026/08/31",
+        "08/2026",
+        "hoje",
+        "32/08/2026",
+        "31/13/2026",
+        "",
+    ] {
+        assert!(
+            datas::data_para_iso(ruim).is_err(),
+            "deveria recusar {ruim:?}"
+        );
+    }
+}
+
+#[test]
+fn dia_e_mes_nao_sao_adivinhados() {
+    // 03/04/2026 é 3 de abril. Um parser que decidisse sozinho entre dia/mês e
+    // mês/dia erraria a competência de uma nota fiscal sem avisar.
+    assert_eq!(datas::data_para_iso("03/04/2026").unwrap(), "2026-04-03");
+}
+
+#[test]
+fn emissao_ganha_hora_e_fuso_de_brasilia() {
+    assert_eq!(
+        datas::datahora_para_iso("31/08/2026").unwrap(),
+        "2026-08-31T00:00:00-03:00"
+    );
+    assert_eq!(
+        datas::datahora_para_iso("31/08/2026 14:30").unwrap(),
+        "2026-08-31T14:30:00-03:00"
+    );
+    assert_eq!(
+        datas::datahora_para_iso("31/08/2026 14:30:59").unwrap(),
+        "2026-08-31T14:30:59-03:00"
+    );
+}
+
+#[test]
+fn emissao_com_fuso_explicito_e_respeitada() {
+    // Um ISO completo passa intacto: quem informou o fuso sabe o que quer.
+    let iso = "2026-07-31T21:26:57-03:00";
+    assert_eq!(datas::datahora_para_iso(iso).unwrap(), iso);
+}
+
+#[test]
+fn exibicao_volta_para_o_formato_brasileiro() {
+    assert_eq!(datas::para_br("2026-08-31"), "31/08/2026");
+    assert_eq!(
+        datas::para_br("2026-08-31T14:30:59-03:00"),
+        "31/08/2026 14:30"
+    );
+    // O que não for data volta como veio: um resumo é para ler, não para falhar.
+    assert_eq!(datas::para_br("-"), "-");
+    assert_eq!(datas::para_br("qualquer coisa"), "qualquer coisa");
+}
+
+#[test]
+fn ida_e_volta_preserva_a_data() {
+    for br in ["31/08/2026", "01/01/2026", "29/02/2028"] {
+        let iso = datas::data_para_iso(br).unwrap();
+        assert_eq!(datas::para_br(&iso), br, "ida e volta mudou {br}");
+    }
+}
