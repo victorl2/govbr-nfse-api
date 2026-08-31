@@ -25,7 +25,7 @@ O endereço do serviço vem de `--url` ou da variável `NFSE_URL`
 ```bash
 export NFSE_URL=http://localhost:8080
 
-nfse saude                                   # serviço no ar? certificado válido?
+nfse health                                   # serviço no ar? certificado válido?
 nfse validar   -a venda.json                 # monta e valida, sem transmitir
 nfse emitir    -a venda.json                 # emite de verdade
 nfse emitir    -a venda.json --salvar-xml nota.xml

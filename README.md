@@ -24,7 +24,7 @@ Há uma CLI em Rust, distribuída como binário único e sem runtime, que fala c
 o serviço:
 
 ```bash
-nfse saude
+nfse health
 nfse emitir -a venda.json
 nfse danfse CHAVE -s danfse.pdf
 ```

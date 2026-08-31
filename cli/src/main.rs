@@ -56,7 +56,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Comando {
     /// Estado do serviço e do certificado
-    Saude,
+    Health,
     /// Dados do certificado carregado
     Certificado,
     /// Testa a conectividade mTLS com a SEFIN
@@ -157,7 +157,16 @@ enum Comando {
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    // Não usamos `Cli::parse()`: ele encerra com 2 em erro de uso, e 2 aqui
+    // significa "documento recusado". Confundir um argumento errado com uma
+    // recusa da SEFIN faria um script tratar um typo como problema fiscal.
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            let _ = e.print();
+            return ExitCode::from(codigo_do_erro_de_uso(e.kind()));
+        }
+    };
     let client = Client::new(&cli.url, Duration::from_secs(cli.timeout));
 
     match executar(&cli, &client) {
@@ -166,6 +175,18 @@ fn main() -> ExitCode {
             eprintln!("erro: {e}");
             ExitCode::from(codigo_do_erro(&e))
         }
+    }
+}
+
+/// `--help` e `--version` não são falhas; qualquer outro problema de linha de
+/// comando é erro de uso, nunca recusa de documento.
+fn codigo_do_erro_de_uso(kind: clap::error::ErrorKind) -> u8 {
+    use clap::error::ErrorKind;
+    match kind {
+        ErrorKind::DisplayHelp
+        | ErrorKind::DisplayVersion
+        | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => EXIT_OK,
+        _ => EXIT_ERRO,
     }
 }
 
@@ -182,12 +203,12 @@ fn codigo_do_erro(e: &Error) -> u8 {
 
 fn executar(cli: &Cli, client: &Client) -> client::Result<u8> {
     match &cli.comando {
-        Comando::Saude => {
+        Comando::Health => {
             let (status, corpo) = client.health()?;
             if cli.json {
                 imprimir_json(&corpo);
             } else {
-                resumir_saude(&corpo);
+                resumir_health(&corpo);
             }
             Ok(if status == 200 {
                 EXIT_OK
@@ -405,7 +426,7 @@ fn imprimir_json(v: &Value) {
     }
 }
 
-fn resumir_saude(corpo: &Value) {
+fn resumir_health(corpo: &Value) {
     let status = corpo.get("status").and_then(Value::as_str).unwrap_or("?");
     println!("status: {status}");
     if let Some(cert) = corpo.get("certificate") {

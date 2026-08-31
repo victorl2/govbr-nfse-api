@@ -210,6 +210,23 @@ fn barra_final_na_url_nao_duplica() {
 // ----------------------------------------------------------------- argumentos
 
 #[test]
+fn erro_de_uso_nao_se_confunde_com_recusa() {
+    use clap::error::ErrorKind;
+    // clap sai com 2 por padrão, e 2 aqui é "documento recusado": um argumento
+    // errado não pode ser lido por um script como nota rejeitada.
+    assert_eq!(
+        codigo_do_erro_de_uso(ErrorKind::InvalidSubcommand),
+        EXIT_ERRO
+    );
+    assert_eq!(
+        codigo_do_erro_de_uso(ErrorKind::MissingRequiredArgument),
+        EXIT_ERRO
+    );
+    assert_eq!(codigo_do_erro_de_uso(ErrorKind::DisplayHelp), EXIT_OK);
+    assert_eq!(codigo_do_erro_de_uso(ErrorKind::DisplayVersion), EXIT_OK);
+}
+
+#[test]
 fn a_linha_de_comando_esta_bem_formada() {
     use clap::CommandFactory;
     Cli::command().debug_assert();
