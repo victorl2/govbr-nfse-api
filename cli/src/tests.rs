@@ -69,10 +69,19 @@ fn evento_registrado_sai_zero() {
 
 #[test]
 fn recusas_saem_dois() {
-    for status in ["REJECTED_BY_SEFIN", "REJECTED_LOCALLY", "SUBMIT_FAILED"] {
+    for status in ["REJECTED_BY_SEFIN", "REJECTED_LOCALLY"] {
         let v = serde_json::json!({ "status": status });
         assert_eq!(codigo_do_status(&v), EXIT_RECUSADO, "status {status}");
     }
+}
+
+#[test]
+fn falha_em_transito_nao_e_recusa() {
+    // A diferença que evita nota duplicada: recusa é problema do documento,
+    // SUBMIT_FAILED é não saber se a nota foi criada.
+    let v = serde_json::json!({"status": "SUBMIT_FAILED"});
+    assert_eq!(codigo_do_status(&v), EXIT_INDETERMINADO);
+    assert_ne!(codigo_do_status(&v), EXIT_RECUSADO);
 }
 
 #[test]
@@ -230,4 +239,126 @@ fn erro_de_uso_nao_se_confunde_com_recusa() {
 fn a_linha_de_comando_esta_bem_formada() {
     use clap::CommandFactory;
     Cli::command().debug_assert();
+}
+
+// -------------------------------------------------------------------- config
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Caminho novo a cada chamada: os testes rodam em paralelo e não podem
+/// disputar o mesmo arquivo.
+fn caminho_temporario() -> std::path::PathBuf {
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir()
+        .join(format!("nfse-cli-teste-{}-{n}", std::process::id()))
+        .join(".nfse-cli")
+        .join("config.json")
+}
+
+#[test]
+fn config_inexistente_e_criado_com_os_padroes() {
+    let caminho = caminho_temporario();
+    assert!(!caminho.exists());
+    let config = Config::carregar(Some(&caminho)).expect("carregar");
+    assert!(config.recem_criado);
+    assert!(caminho.exists(), "o arquivo deveria ter sido criado");
+    assert_eq!(config.dados.ambiente_ativo, "local");
+    assert_eq!(config.url_ativa(), config::URL_PADRAO);
+    let _ = std::fs::remove_dir_all(caminho.parent().unwrap().parent().unwrap());
+}
+
+#[test]
+fn ambiente_e_modelo_sobrevivem_a_releitura() {
+    let caminho = caminho_temporario();
+    {
+        let mut config = Config::carregar(Some(&caminho)).expect("criar");
+        config.dados.ambientes.insert(
+            "restrita".into(),
+            config::Ambiente {
+                url: "https://nfse.interno:8443".into(),
+            },
+        );
+        config.dados.ambiente_ativo = "restrita".into();
+        config.dados.modelos.insert(
+            "mensal".into(),
+            serde_json::json!({"values":{"vServ":"10000.00"}}),
+        );
+        config.dados.modelo_padrao = Some("mensal".into());
+        config.salvar().expect("salvar");
+    }
+    let config = Config::carregar(Some(&caminho)).expect("reler");
+    assert!(!config.recem_criado);
+    assert_eq!(config.url_ativa(), "https://nfse.interno:8443");
+    assert_eq!(config.dados.modelo_padrao.as_deref(), Some("mensal"));
+    assert_eq!(
+        config.modelo("mensal").expect("modelo")["values"]["vServ"],
+        "10000.00"
+    );
+    let _ = std::fs::remove_dir_all(caminho.parent().unwrap().parent().unwrap());
+}
+
+#[test]
+fn modelo_inexistente_diz_quais_existem() {
+    let caminho = caminho_temporario();
+    let mut config = Config::carregar(Some(&caminho)).expect("criar");
+    config
+        .dados
+        .modelos
+        .insert("mensal".into(), serde_json::json!({}));
+    let erro = config.modelo("anual").expect_err("deveria falhar");
+    let texto = erro.to_string();
+    assert!(texto.contains("anual"), "{texto}");
+    assert!(texto.contains("mensal"), "{texto}");
+    let _ = std::fs::remove_dir_all(caminho.parent().unwrap().parent().unwrap());
+}
+
+#[test]
+fn config_corrompido_explica_como_recuperar() {
+    let caminho = caminho_temporario();
+    std::fs::create_dir_all(caminho.parent().unwrap()).unwrap();
+    std::fs::write(&caminho, "{ isto não é json").unwrap();
+    let erro = Config::carregar(Some(&caminho)).expect_err("deveria falhar");
+    assert!(erro.to_string().contains("apague o arquivo"));
+    let _ = std::fs::remove_dir_all(caminho.parent().unwrap().parent().unwrap());
+}
+
+// ------------------------------------------------- substituições no modelo
+
+#[test]
+fn substituicao_altera_apenas_o_campo_pedido() {
+    // O caso do dia a dia: o modelo tem a venda inteira e a emissão muda o valor.
+    let mut venda = serde_json::json!({
+        "emitter": {"cnpj": "12345678000195"},
+        "dps": {"serie": "70000", "dCompet": "2026-01-31"},
+        "values": {"vServ": "1000.00", "tribISSQN": "3"}
+    });
+    config::definir(
+        &mut venda,
+        &["values", "vServ"],
+        serde_json::json!("2500.00"),
+    );
+    config::definir(
+        &mut venda,
+        &["dps", "dCompet"],
+        serde_json::json!("2026-08-31"),
+    );
+
+    assert_eq!(venda["values"]["vServ"], "2500.00");
+    assert_eq!(venda["dps"]["dCompet"], "2026-08-31");
+    // O resto do modelo fica intacto.
+    assert_eq!(venda["values"]["tribISSQN"], "3");
+    assert_eq!(venda["dps"]["serie"], "70000");
+    assert_eq!(venda["emitter"]["cnpj"], "12345678000195");
+}
+
+#[test]
+fn substituicao_cria_os_niveis_que_faltam() {
+    let mut venda = serde_json::json!({});
+    config::definir(
+        &mut venda,
+        &["service", "description"],
+        serde_json::json!("Consultoria"),
+    );
+    assert_eq!(venda["service"]["description"], "Consultoria");
 }

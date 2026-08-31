@@ -3,24 +3,27 @@
 //! O serviço faz todo o trabalho fiscal; esta CLI é uma casca sobre a API HTTP.
 //! Os códigos de saída são o contrato importante aqui, porque emissão costuma
 //! rodar dentro de script: 0 sucesso, 2 documento recusado, 3 serviço fora,
-//! 4 não encontrado, 1 qualquer outro erro.
+//! 4 não encontrado, 5 estado indeterminado, 1 qualquer outro erro.
 
 mod client;
+mod config;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use serde_json::Value;
 
 use client::{Client, Error};
+use config::Config;
 
 const EXIT_OK: u8 = 0;
 const EXIT_ERRO: u8 = 1;
 const EXIT_RECUSADO: u8 = 2;
 const EXIT_INDISPONIVEL: u8 = 3;
 const EXIT_NAO_ENCONTRADO: u8 = 4;
+const EXIT_INDETERMINADO: u8 = 5;
 
 #[derive(Parser)]
 #[command(
@@ -29,17 +32,17 @@ const EXIT_NAO_ENCONTRADO: u8 = 4;
     about = "CLI do emissor de NFS-e (Sistema Nacional)",
     long_about = "Conversa com o serviço de emissão de NFS-e pela API HTTP.\n\n\
                   Códigos de saída: 0 sucesso, 1 erro, 2 documento recusado,\n\
-                  3 serviço indisponível, 4 não encontrado."
+                  3 serviço indisponível, 4 não encontrado,\n\
+                  5 indeterminado (não se sabe se a nota foi criada)."
 )]
 struct Cli {
-    /// Endereço do serviço
-    #[arg(
-        long,
-        global = true,
-        env = "NFSE_URL",
-        default_value = "http://localhost:8080"
-    )]
-    url: String,
+    /// Endereço do serviço. Sem isto, vale o ambiente ativo do config
+    #[arg(long, global = true, env = "NFSE_URL")]
+    url: Option<String>,
+
+    /// Caminho do config (padrão: ./.nfse-cli/config.json ou ~/.nfse-cli/config.json)
+    #[arg(long, global = true, env = "NFSE_CLI_CONFIG")]
+    config: Option<PathBuf>,
 
     /// Tempo limite de cada requisição, em segundos
     #[arg(long, global = true, env = "NFSE_TIMEOUT", default_value_t = 60)]
@@ -64,18 +67,22 @@ enum Comando {
 
     /// Monta, valida e assina a DPS sem transmitir nada
     Validar {
-        /// Arquivo JSON descrevendo a venda
-        #[arg(short, long)]
-        arquivo: PathBuf,
+        #[command(flatten)]
+        venda: EntradaVenda,
     },
     /// Emite a NFS-e: monta, assina e transmite a DPS à SEFIN
     Emitir {
-        /// Arquivo JSON descrevendo a venda
-        #[arg(short, long)]
-        arquivo: PathBuf,
+        #[command(flatten)]
+        venda: EntradaVenda,
         /// Grava o XML da NFS-e autorizada neste caminho
         #[arg(long)]
         salvar_xml: Option<PathBuf>,
+    },
+
+    /// Ambiente ativo e modelos de venda
+    Config {
+        #[command(subcommand)]
+        acao: Option<AcaoConfig>,
     },
 
     /// Registro local de uma nota emitida
@@ -156,6 +163,67 @@ enum Comando {
     },
 }
 
+/// De onde sai a venda e o que muda nela. O caso comum do dia a dia é um
+/// modelo salvo mais o valor e a competência do mês.
+#[derive(Args, Clone)]
+struct EntradaVenda {
+    /// Arquivo JSON descrevendo a venda
+    #[arg(short, long, conflicts_with = "modelo")]
+    arquivo: Option<PathBuf>,
+    /// Modelo salvo no config
+    #[arg(short = 'M', long)]
+    modelo: Option<String>,
+    /// Substitui values.vServ
+    #[arg(long)]
+    valor: Option<String>,
+    /// Substitui dps.dCompet (AAAA-MM-DD)
+    #[arg(long)]
+    competencia: Option<String>,
+    /// Substitui dps.dhEmi
+    #[arg(long)]
+    emissao: Option<String>,
+    /// Substitui service.description
+    #[arg(long)]
+    descricao: Option<String>,
+    /// Substitui dps.serie
+    #[arg(long)]
+    serie: Option<String>,
+}
+
+#[derive(Subcommand)]
+enum AcaoConfig {
+    /// Mostra o caminho e o conteúdo do config
+    Mostrar,
+    /// Ativa um ambiente e, com --url, define o endereço dele
+    Ambiente {
+        nome: String,
+        #[arg(long)]
+        url: Option<String>,
+    },
+    /// Modelos de venda
+    Modelo {
+        #[command(subcommand)]
+        acao: AcaoModelo,
+    },
+}
+
+#[derive(Subcommand)]
+enum AcaoModelo {
+    /// Guarda uma venda como modelo
+    Salvar {
+        nome: String,
+        #[arg(short, long)]
+        arquivo: PathBuf,
+        /// Passa a ser o modelo usado quando nenhum for indicado
+        #[arg(long)]
+        padrao: bool,
+    },
+    /// Lista os modelos salvos
+    Listar,
+    /// Remove um modelo
+    Remover { nome: String },
+}
+
 fn main() -> ExitCode {
     // Não usamos `Cli::parse()`: ele encerra com 2 em erro de uso, e 2 aqui
     // significa "documento recusado". Confundir um argumento errado com uma
@@ -167,9 +235,25 @@ fn main() -> ExitCode {
             return ExitCode::from(codigo_do_erro_de_uso(e.kind()));
         }
     };
-    let client = Client::new(&cli.url, Duration::from_secs(cli.timeout));
+    let mut config = match Config::carregar(cli.config.as_deref()) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("erro: {e}");
+            return ExitCode::from(EXIT_ERRO);
+        }
+    };
+    if config.recem_criado {
+        eprintln!("config criado em {}", config.caminho.display());
+    }
 
-    match executar(&cli, &client) {
+    // --url ganha do config; sem ele, vale o ambiente ativo.
+    let url = cli
+        .url
+        .clone()
+        .unwrap_or_else(|| config.url_ativa().to_string());
+    let client = Client::new(&url, Duration::from_secs(cli.timeout));
+
+    match executar(&cli, &client, &mut config) {
         Ok(code) => ExitCode::from(code),
         Err(e) => {
             eprintln!("erro: {e}");
@@ -201,7 +285,7 @@ fn codigo_do_erro(e: &Error) -> u8 {
     }
 }
 
-fn executar(cli: &Cli, client: &Client) -> client::Result<u8> {
+fn executar(cli: &Cli, client: &Client, config: &mut Config) -> client::Result<u8> {
     match &cli.comando {
         Comando::Health => {
             let (status, corpo) = client.health()?;
@@ -227,8 +311,8 @@ fn executar(cli: &Cli, client: &Client) -> client::Result<u8> {
             Ok(EXIT_OK)
         }
 
-        Comando::Validar { arquivo } => {
-            let resposta = client.validate(ler_json(arquivo)?)?;
+        Comando::Validar { venda } => {
+            let resposta = client.validate(montar_venda(venda, config)?)?;
             if cli.json {
                 imprimir_json(&resposta);
             } else {
@@ -259,11 +343,8 @@ fn executar(cli: &Cli, client: &Client) -> client::Result<u8> {
             )
         }
 
-        Comando::Emitir {
-            arquivo,
-            salvar_xml,
-        } => {
-            let resposta = client.send(ler_json(arquivo)?)?;
+        Comando::Emitir { venda, salvar_xml } => {
+            let resposta = client.send(montar_venda(venda, config)?)?;
             if let Some(caminho) = salvar_xml {
                 if let Some(xml) = resposta.get("nfseXml").and_then(Value::as_str) {
                     escrever(caminho, xml.as_bytes())?;
@@ -389,6 +470,8 @@ fn executar(cli: &Cli, client: &Client) -> client::Result<u8> {
             Ok(EXIT_OK)
         }
 
+        Comando::Config { acao } => executar_config(acao.as_ref(), config, cli.json),
+
         Comando::ValidarDps {
             arquivo,
             municipio,
@@ -409,11 +492,170 @@ fn executar(cli: &Cli, client: &Client) -> client::Result<u8> {
     }
 }
 
+// ------------------------------------------------------------------- config
+
+fn executar_config(
+    acao: Option<&AcaoConfig>,
+    config: &mut Config,
+    json: bool,
+) -> client::Result<u8> {
+    match acao {
+        None | Some(AcaoConfig::Mostrar) => {
+            if json {
+                imprimir_json(&serde_json::to_value(&config.dados).unwrap_or(Value::Null));
+            } else {
+                println!("config: {}", config.caminho.display());
+                println!("ambiente ativo: {}", config.dados.ambiente_ativo);
+                for (nome, ambiente) in &config.dados.ambientes {
+                    let marca = if *nome == config.dados.ambiente_ativo {
+                        "*"
+                    } else {
+                        " "
+                    };
+                    println!("  {marca} {nome}: {}", ambiente.url);
+                }
+                let padrao = config.dados.modelo_padrao.as_deref().unwrap_or("-");
+                println!("modelo padrão: {padrao}");
+                if config.dados.modelos.is_empty() {
+                    println!("modelos: nenhum");
+                } else {
+                    let nomes: Vec<&str> =
+                        config.dados.modelos.keys().map(String::as_str).collect();
+                    println!("modelos: {}", nomes.join(", "));
+                }
+            }
+            Ok(EXIT_OK)
+        }
+
+        Some(AcaoConfig::Ambiente { nome, url }) => {
+            if let Some(url) = url {
+                config
+                    .dados
+                    .ambientes
+                    .insert(nome.clone(), config::Ambiente { url: url.clone() });
+            } else if !config.dados.ambientes.contains_key(nome) {
+                // Ativar um ambiente sem endereço deixaria a CLI apontando para o
+                // padrão sem avisar, que é como se emite no lugar errado.
+                return Err(Error::Local(format!(
+                    "o ambiente '{nome}' não tem endereço definido; \
+                     use: nfse config ambiente {nome} --url https://..."
+                )));
+            }
+            config.dados.ambiente_ativo = nome.clone();
+            config.salvar()?;
+            println!("ambiente ativo: {nome} ({})", config.url_ativa());
+            Ok(EXIT_OK)
+        }
+
+        Some(AcaoConfig::Modelo { acao }) => match acao {
+            AcaoModelo::Salvar {
+                nome,
+                arquivo,
+                padrao,
+            } => {
+                let venda = ler_json(arquivo)?;
+                config.dados.modelos.insert(nome.clone(), venda);
+                if *padrao || config.dados.modelo_padrao.is_none() {
+                    config.dados.modelo_padrao = Some(nome.clone());
+                }
+                config.salvar()?;
+                println!("modelo '{nome}' salvo em {}", config.caminho.display());
+                if config.dados.modelo_padrao.as_deref() == Some(nome.as_str()) {
+                    println!("é o modelo padrão");
+                }
+                Ok(EXIT_OK)
+            }
+            AcaoModelo::Listar => {
+                if config.dados.modelos.is_empty() {
+                    println!("nenhum modelo salvo");
+                }
+                for nome in config.dados.modelos.keys() {
+                    let marca = if config.dados.modelo_padrao.as_deref() == Some(nome.as_str()) {
+                        "*"
+                    } else {
+                        " "
+                    };
+                    println!("{marca} {nome}");
+                }
+                Ok(EXIT_OK)
+            }
+            AcaoModelo::Remover { nome } => {
+                if config.dados.modelos.remove(nome).is_none() {
+                    return Err(Error::Local(format!("modelo '{nome}' não existe")));
+                }
+                if config.dados.modelo_padrao.as_deref() == Some(nome.as_str()) {
+                    config.dados.modelo_padrao = None;
+                }
+                config.salvar()?;
+                println!("modelo '{nome}' removido");
+                Ok(EXIT_OK)
+            }
+        },
+    }
+}
+
+/// Resolve a venda: arquivo, modelo indicado ou modelo padrão, com as
+/// substituições por cima. É o que faz a emissão do dia a dia ser só
+/// `nfse emitir --valor 1500.00`.
+fn montar_venda(entrada: &EntradaVenda, config: &Config) -> client::Result<Value> {
+    let mut venda = match (&entrada.arquivo, &entrada.modelo) {
+        (Some(caminho), _) => ler_json(caminho)?,
+        (None, Some(nome)) => config.modelo(nome)?,
+        (None, None) => match config.dados.modelo_padrao.as_deref() {
+            Some(nome) => config.modelo(nome)?,
+            None => {
+                return Err(Error::Local(
+                    "informe --arquivo, --modelo, ou salve um modelo padrão com \
+                     'nfse config modelo salvar <nome> -a venda.json --padrao'"
+                        .into(),
+                ))
+            }
+        },
+    };
+
+    if let Some(valor) = &entrada.valor {
+        config::definir(
+            &mut venda,
+            &["values", "vServ"],
+            Value::String(valor.clone()),
+        );
+    }
+    if let Some(competencia) = &entrada.competencia {
+        config::definir(
+            &mut venda,
+            &["dps", "dCompet"],
+            Value::String(competencia.clone()),
+        );
+    }
+    if let Some(emissao) = &entrada.emissao {
+        config::definir(
+            &mut venda,
+            &["dps", "dhEmi"],
+            Value::String(emissao.clone()),
+        );
+    }
+    if let Some(serie) = &entrada.serie {
+        config::definir(&mut venda, &["dps", "serie"], Value::String(serie.clone()));
+    }
+    if let Some(descricao) = &entrada.descricao {
+        config::definir(
+            &mut venda,
+            &["service", "description"],
+            Value::String(descricao.clone()),
+        );
+    }
+    Ok(venda)
+}
+
 // --------------------------------------------------------------- apresentação
 
 fn codigo_do_status(resposta: &Value) -> u8 {
     match resposta.get("status").and_then(Value::as_str) {
         Some("AUTHORIZED") | Some("REGISTERED") => EXIT_OK,
+        // SUBMIT_FAILED não é recusa: a transmissão caiu no meio e nem o serviço
+        // sabe se a nota chegou a existir. Tratar isso como recusa levaria um
+        // script a reenviar e duplicar a nota — por isso tem código próprio.
+        Some("SUBMIT_FAILED") => EXIT_INDETERMINADO,
         Some(_) => EXIT_RECUSADO,
         None => EXIT_OK,
     }

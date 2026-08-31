@@ -51,3 +51,7 @@ tmp/
 # These hold the real CNPJ, taker details and signed fiscal documents —
 # never in the repo. In the container this lives at /var/lib/nfse.
 data/
+
+# Configuração local da CLI. Os modelos de venda guardam CNPJ, tomador e valores
+# reais, então este arquivo é dado de cliente, não configuração de projeto.
+.nfse-cli/

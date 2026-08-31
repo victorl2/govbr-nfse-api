@@ -1,4 +1,4 @@
-# nfse — CLI
+# nfse (CLI)
 
 Linha de comando para o serviço de emissão de NFS-e. O serviço faz todo o
 trabalho fiscal (monta, valida, assina e transmite a DPS); esta CLI é uma casca
@@ -17,14 +17,47 @@ Baixe o binário da sua plataforma em
 cargo build --release      # -> target/release/nfse
 ```
 
-## Uso
+## Configuração
 
-O endereço do serviço vem de `--url` ou da variável `NFSE_URL`
-(padrão `http://localhost:8080`).
+Na primeira execução a CLI cria `.nfse-cli/config.json` e avisa onde. O arquivo
+guarda o **ambiente ativo** (com qual serviço falar) e os **modelos** de venda.
+
+Procura nesta ordem: `--config`, `$NFSE_CLI_CONFIG`, `./.nfse-cli/config.json`
+(configuração do projeto) e `~/.nfse-cli/config.json` (a do usuário). Uma pasta
+`.nfse-cli` no diretório do projeto vence a do usuário, o que permite manter uma
+configuração por cliente ou por empresa.
 
 ```bash
-export NFSE_URL=http://localhost:8080
+nfse config                                        # onde está e o que tem dentro
+nfse config ambiente restrita --url https://nfse.interno:8443
+nfse config ambiente restrita                      # só troca o ativo
+```
 
+O endereço vem, em ordem: `--url`, `$NFSE_URL`, ambiente ativo do config.
+**Nenhum segredo entra neste arquivo**: o certificado e-CNPJ e sua senha vivem
+no serviço, nunca na máquina de quem chama a CLI.
+
+### Modelos: emitir mudando só valor e datas
+
+Guarde uma venda inteira uma vez; depois a emissão do mês muda o que varia.
+
+```bash
+nfse config modelo salvar mensal -a venda.json --padrao
+nfse config modelo listar
+nfse config modelo remover mensal
+
+nfse emitir --valor 2500.00 --competencia 2026-08-31
+nfse emitir -M mensal --valor 2500.00 --descricao "Consultoria, agosto"
+```
+
+Substituições disponíveis em `emitir` e `validar`: `--valor` (`values.vServ`),
+`--competencia` (`dps.dCompet`), `--emissao` (`dps.dhEmi`), `--serie`
+(`dps.serie`) e `--descricao` (`service.description`). O resto do modelo segue
+intacto. Sem `-a` e sem `-M`, vale o modelo padrão.
+
+## Uso
+
+```bash
 nfse health                                   # serviço no ar? certificado válido?
 nfse validar   -a venda.json                 # monta e valida, sem transmitir
 nfse emitir    -a venda.json                 # emite de verdade
@@ -54,23 +87,27 @@ casos que exigem reações diferentes:
 
 | Código | Significado |
 |---|---|
-| `0` | Sucesso — nota `AUTHORIZED` ou evento `REGISTERED`. |
+| `0` | Sucesso: nota `AUTHORIZED` ou evento `REGISTERED`. |
 | `1` | Erro de uso ou falha inesperada. |
-| `2` | Documento recusado (`REJECTED_BY_SEFIN`, `REJECTED_LOCALLY`, `SUBMIT_FAILED`). |
+| `2` | Documento recusado (`REJECTED_BY_SEFIN`, `REJECTED_LOCALLY`). |
 | `3` | Serviço indisponível: fora do ar, certificado inutilizável (503) ou sobrecarregado (529). |
 | `4` | Não encontrado (404). |
+| `5` | `SUBMIT_FAILED`: a transmissão caiu e **não se sabe se a nota foi criada**. |
 
-A diferença entre `2` e `3` é a que importa na prática: `2` significa que o
-documento tem um problema e reenviar igual não vai adiantar; `3` significa que o
-documento pode estar correto e a tentativa pode ser repetida.
+As distinções que importam na prática: `2` é problema do documento, reenviar
+igual não adianta. `3` é problema do serviço, o documento pode estar certo e a
+tentativa pode ser repetida. `5` é o caso delicado: a nota **pode** ter sido
+criada na SEFIN, então repetir às cegas arrisca duplicar; consulte antes
+(`nfse consultar CHAVE`, ou o `GET /dps/{id}` que o próprio achado sugere).
 
 ```bash
 if nfse emitir -a venda.json; then
     echo "emitida"
 else
     case $? in
-        2) echo "recusada — corrija o documento" ;;
-        3) echo "serviço fora — tente de novo mais tarde" ;;
+        2) echo "recusada, corrija o documento" ;;
+        3) echo "serviço fora, tente de novo mais tarde" ;;
+        5) echo "indeterminado, verifique antes de reenviar" ;;
         *) echo "erro inesperado" ;;
     esac
 fi
